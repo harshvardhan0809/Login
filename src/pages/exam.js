@@ -3,8 +3,8 @@ import { requireUser } from "../lib/session.js";
 import { el, errorMessage, setBusy, setNotice, toast } from "../lib/ui.js";
 import { formatClock, formatDateTime, formatDuration } from "../lib/dates.js";
 import { isRunningInSeb, sebQuitUrl } from "../lib/seb.js";
+import { celebrate } from "../lib/celebrate.js";
 import { mathText, setMathText } from "../lib/math.js";
-import "../lib/snow.js";
 
 const subjectEl = document.getElementById("examSubject");
 const titleEl = document.getElementById("examTitle");
@@ -20,7 +20,7 @@ const clockEl = document.getElementById("examClock");
 const clockValueEl = document.getElementById("examClockValue");
 
 /** Seconds SEB stays open after a submission, so the student sees their score. */
-const CLOSE_DELAY_SECONDS = 3;
+const CLOSE_DELAY_SECONDS = 5;
 
 backBtn.addEventListener("click", () => location.replace("dashboard.html"));
 
@@ -56,26 +56,67 @@ function stopTimer() {
  * Navigating to the config's quitURL is what actually quits SEB; the delay
  * only exists so the student can read their score first. Outside SEB there is
  * nothing to close, so the Back button stands in for it.
+ *
+ * The countdown is shown, not just waited out. A locked-down browser closing
+ * itself with no warning reads as a crash — which is exactly the wrong thing
+ * to feel in the ten seconds after finishing an exam.
  */
 function closeAfterSubmit(container) {
   if (!isRunningInSeb()) return;
 
-  const line = el("p", { className: "exam-closing" });
-  container.append(line);
+  const count = el("span", { className: "close-count", text: String(CLOSE_DELAY_SECONDS) });
 
-  let left = CLOSE_DELAY_SECONDS;
+  // An SVG ring rather than a bar: it reads as a timer at a glance and needs
+  // no width to be legible next to the number it wraps.
+  const svgNS = "http://www.w3.org/2000/svg";
+  const track = document.createElementNS(svgNS, "circle");
+  const sweep = document.createElementNS(svgNS, "circle");
+  track.setAttribute("class", "close-ring-track");
+  sweep.setAttribute("class", "close-ring-sweep");
+
+  for (const circle of [track, sweep]) {
+    circle.setAttribute("cx", "26");
+    circle.setAttribute("cy", "26");
+    circle.setAttribute("r", "22");
+  }
+
+  const circumference = 2 * Math.PI * 22;
+  sweep.setAttribute("stroke-dasharray", String(circumference));
+
+  const svg = document.createElementNS(svgNS, "svg");
+  svg.setAttribute("viewBox", "0 0 52 52");
+  svg.setAttribute("aria-hidden", "true");
+  svg.append(track, sweep);
+
+  const panel = el("div", { className: "close-countdown" }, [
+    el("div", { className: "close-ring" }, [svg, count]),
+    el("p", { className: "close-label", text: "Safe Exam Browser is closing" }),
+  ]);
+  container.append(panel);
+
+  const endsAt = performance.now() + CLOSE_DELAY_SECONDS * 1000;
+  let frame = null;
+
+  // Driven by animation frames, not a 1s interval: the ring drains smoothly
+  // while the number still steps 5, 4, 3, 2, 1.
   const tick = () => {
-    line.textContent = `Safe Exam Browser closes in ${left}...`;
+    const left = endsAt - performance.now();
+
     if (left <= 0) {
-      clearInterval(id);
+      cancelAnimationFrame(frame);
       location.href = sebQuitUrl();
       return;
     }
-    left -= 1;
+
+    count.textContent = String(Math.ceil(left / 1000));
+    sweep.setAttribute(
+      "stroke-dashoffset",
+      String(circumference * (1 - left / (CLOSE_DELAY_SECONDS * 1000)))
+    );
+    frame = requestAnimationFrame(tick);
   };
 
-  const id = setInterval(tick, 1000);
-  tick();
+  frame = requestAnimationFrame(tick);
 }
 
 function updateAnsweredCount() {
@@ -166,6 +207,7 @@ function showResult({ score, total, percentage }) {
   ]);
 
   resultEl.replaceChildren(panel);
+  celebrate(panel);
   closeAfterSubmit(panel);
 }
 

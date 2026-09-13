@@ -1,7 +1,6 @@
 import { supabase } from "../lib/supabase.js";
 import { updatePassword, validateNewPassword } from "../lib/password.js";
 import { errorMessage, onSubmit, setBusy, toast } from "../lib/ui.js";
-import "../lib/snow.js";
 
 const intro = document.getElementById("resetIntro");
 const form = document.getElementById("resetForm");

@@ -4,7 +4,9 @@ import { countLabel, el, renderList, setBusy, setNotice, wireTabs } from "../lib
 import { describeVideo } from "../lib/video.js";
 import { dueStatus, isClosed, scheduleLabel } from "../lib/dates.js";
 import { openSebGate } from "../lib/sebGate.js";
-import "../lib/snow.js";
+import { examAlert } from "../lib/examAlert.js";
+import { noticeCard, sortNotices } from "../lib/noticeBoard.js";
+import { isMissingSubmissions, submissionBox } from "../lib/assignmentSubmit.js";
 
 const welcomeText = document.getElementById("welcomeText");
 const profileIcon = document.getElementById("profileIcon");
@@ -19,6 +21,7 @@ const noticesList = document.getElementById("noticesList");
 const noticesCount = document.getElementById("noticesCount");
 const assignmentsList = document.getElementById("assignmentsList");
 const assignmentsCount = document.getElementById("assignmentsCount");
+const examAlertMount = document.getElementById("examAlert");
 
 const user = await requireUser();
 
@@ -173,23 +176,6 @@ async function loadVideos() {
 
 videoSearch?.addEventListener("input", renderVideos);
 
-function noticeCard(notice) {
-  const posted = new Date(notice.created_at);
-  const meta = [];
-
-  if (notice.pinned) meta.push(el("span", { className: "pill pill-pinned", text: "Pinned" }));
-  meta.push(
-    el("small", {
-      text: Number.isNaN(posted.valueOf()) ? "" : posted.toLocaleDateString(),
-    })
-  );
-
-  return el("article", { className: `notice-card${notice.pinned ? " notice-pinned" : ""}` }, [
-    el("div", { className: "notice-head" }, [el("h4", { text: notice.title }), ...meta]),
-    el("p", { className: "notice-body", text: notice.body }),
-  ]);
-}
-
 async function loadNotices() {
   setNotice(noticesList, "Loading notices...");
 
@@ -211,10 +197,23 @@ async function loadNotices() {
     return;
   }
 
-  const notices = data ?? [];
-  noticesCount.textContent = countLabel(notices.length, "notice");
-  renderList(noticesList, notices, noticeCard, "No notices have been posted yet.");
+  const notices = sortNotices(data ?? []);
+  const urgent = notices.filter(notice => notice.priority === "urgent").length;
+
+  noticesCount.textContent = urgent
+    ? `${urgent} urgent · ${countLabel(notices.length, "notice")}`
+    : countLabel(notices.length, "notice");
+
+  renderList(
+    noticesList,
+    notices,
+    notice => noticeCard(notice),
+    "No notices have been posted yet."
+  );
 }
+
+/** This student's hand-ins, keyed by assignment id. */
+let submissionsByAssignment = new Map();
 
 function assignmentCard(assignment) {
   const due = dueStatus(assignment.due_date);
@@ -235,20 +234,46 @@ function assignmentCard(assignment) {
     );
   }
 
-  return el("article", { className: "assignment-card" }, [
+  const top = el("div", { className: "assignment-top" }, [
     el("div", { className: "test-info" }, info),
     el("div", { className: "assignment-side" }, side),
   ]);
+
+  const children = [top];
+
+  if (assignment.accepts_submissions) {
+    children.push(
+      submissionBox(
+        assignment,
+        submissionsByAssignment.get(assignment.id) ?? null,
+        user.email,
+        loadAssignments
+      )
+    );
+  }
+
+  return el("article", { className: "assignment-card assignment-card-block" }, children);
 }
 
 async function loadAssignments() {
   setNotice(assignmentsList, "Loading assignments...");
 
   // Undated assignments sort last rather than first.
-  const { data, error } = await supabase
-    .from("assignments")
-    .select("*")
-    .order("due_date", { ascending: true, nullsFirst: false });
+  const [{ data, error }, submissions] = await Promise.all([
+    supabase
+      .from("assignments")
+      .select("*")
+      .order("due_date", { ascending: true, nullsFirst: false }),
+    supabase.from("assignment_submissions").select("*").eq("email", user.email),
+  ]);
+
+  // Hand-ins are optional extra detail: if that table is not there yet, the
+  // assignment list must still render rather than showing an error.
+  if (submissions.error && !isMissingSubmissions(submissions.error)) {
+    console.error("Could not load submissions:", submissions.error.message);
+  }
+
+  submissionsByAssignment = new Map((submissions.data ?? []).map(row => [row.assignment_id, row]));
 
   if (error) {
     console.error("Error loading assignments:", error.message);
@@ -265,6 +290,19 @@ async function loadAssignments() {
   const assignments = data ?? [];
   assignmentsCount.textContent = countLabel(assignments.length, "assignment");
   renderList(assignmentsList, assignments, assignmentCard, "No assignments have been set yet.");
+}
+
+/** Swaps in the banner, disposing of the previous one's countdown interval. */
+function renderExamAlert(openTests) {
+  examAlertMount.firstElementChild?.dispatchEvent(new CustomEvent("exam-alert:dispose"));
+
+  const banner = examAlert(openTests, test =>
+    test.requires_seb === false
+      ? location.assign(`exam.html?test=${encodeURIComponent(test.id)}`)
+      : openSebGate(test)
+  );
+
+  examAlertMount.replaceChildren(...(banner ? [banner] : []));
 }
 
 async function loadDashboard() {
@@ -299,7 +337,17 @@ async function loadDashboard() {
     const open = pending.filter(test => !isClosed(test));
 
     testsCount.textContent = `${open.length} pending`;
-    renderList(testsList, pending, testCard, "No tests are available right now.");
+
+    // Soonest deadline first, so the Tests tab agrees with the banner above it
+    // about which test matters most. Undated tests fall to the bottom.
+    const ordered = [...pending].sort((a, b) => {
+      if (Boolean(a.closes_at) !== Boolean(b.closes_at)) return a.closes_at ? -1 : 1;
+      if (!a.closes_at) return 0;
+      return new Date(a.closes_at) - new Date(b.closes_at);
+    });
+
+    renderList(testsList, ordered, testCard, "No tests are available right now.");
+    renderExamAlert(open);
   }
 
   if (!results.error) {

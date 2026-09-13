@@ -133,3 +133,64 @@ export function scheduleLabel({ closes_at: closesAt, duration_minutes: duration 
 export function isClosed(test) {
   return Boolean(test?.closes_at) && new Date(test.closes_at) < new Date();
 }
+
+/**
+ * "3 hours ago", "in 2 days" — the form a notice board and a countdown both
+ * want. Past and future share one function so the two never drift apart.
+ */
+export function relativeTime(value) {
+  if (!value) return "";
+
+  const date = new Date(value);
+  if (Number.isNaN(date.valueOf())) return "";
+
+  const seconds = Math.round((date - Date.now()) / 1000);
+  const abs = Math.abs(seconds);
+
+  const units = [
+    [60, "second", 1],
+    [3600, "minute", 60],
+    [86400, "hour", 3600],
+    [604800, "day", 86400],
+    [2629800, "week", 604800],
+    [31557600, "month", 2629800],
+    [Infinity, "year", 31557600],
+  ];
+
+  if (abs < 45) return seconds < 0 ? "just now" : "in a moment";
+
+  for (const [limit, unit, divisor] of units) {
+    if (abs < limit) {
+      const count = Math.round(abs / divisor);
+      const plural = count === 1 ? unit : `${unit}s`;
+      return seconds < 0 ? `${count} ${plural} ago` : `in ${count} ${plural}`;
+    }
+  }
+
+  return "";
+}
+
+// --- assignment deadlines --------------------------------------------------
+
+/**
+ * The instant an assignment stops accepting work.
+ *
+ * due_date is a calendar day, so "due 12 September" gives the student all of
+ * the 12th: the cut-off is midnight at the end of it. Mirrors
+ * public.assignment_is_open() in migration 0011 — that function is what
+ * actually enforces this; the copy here only decides what the page shows.
+ *
+ * @returns {Date|null} null when the assignment has no deadline.
+ */
+export function submissionDeadline(dueDate) {
+  const date = parseDueDate(dueDate);
+  if (!date) return null;
+
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate() + 1);
+}
+
+/** True once an assignment has closed for submissions. */
+export function isPastDue(dueDate) {
+  const deadline = submissionDeadline(dueDate);
+  return Boolean(deadline) && Date.now() >= deadline.valueOf();
+}

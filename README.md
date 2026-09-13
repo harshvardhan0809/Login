@@ -158,6 +158,86 @@ CDN — the lockdown browser's URL filter would block an external CDN, and an
 exam should not depend on someone else's uptime. It is split into its own
 chunk, so only the admin and exam pages download it.
 
+### Results and analysis
+
+The **Results** tab links to a full analysis page (`results.html`), one test at
+a time:
+
+- **Headline numbers** — attempts, average, median, pass rate, highest,
+  lowest, and the spread. The spread is the one people skip and shouldn't: a
+  class averaging 60% because everyone scored 60 needs very different teaching
+  from one that split between 20 and 100.
+- **Score distribution** in ten-point bands, coloured either side of the pass
+  mark so a struggling cohort is visible as a shape.
+- **Question analysis** — percentage correct per question, a difficulty band,
+  how many left it blank, and _the wrong answer that caught the most
+  students_. That last one is the point: it tells you which misconception to
+  reteach, not just that the question was hard.
+- **Per-student table** with a tick or cross for every question, and a CSV
+  export.
+
+This runs on `results.detail`, a per-question record written by `submit_exam()`
+at grading time (migration 0009). Attempts submitted before that migration have
+no detail, so they still count toward scores and distribution but not toward
+question analysis — the page says so rather than showing a misleading zero.
+
+### Notice board
+
+Notices carry a **category** (General, Academic, Exam, Event, Holiday), a
+**priority** (Normal, Important, Urgent) and an author, which is stamped from
+the signed-in session by a trigger rather than trusted from the browser.
+
+The board sorts urgent first, then pinned, then newest, and priority shows as a
+coloured rule down the left edge of each card — the one cue that survives being
+skim-read. Sorting lives in `src/lib/noticeBoard.js`, shared by the student
+board and the admin list, so a teacher composing a notice sees exactly what the
+class will see.
+
+### Handing in assignments
+
+Tick **"Students hand in a link to their work"** when creating an assignment
+and it grows a Submit button on the student dashboard. Students paste a Google
+Docs, Drive or any other URL; teachers get the list under the assignment, with
+each hand-in's address, how long ago it arrived, and a **Late** badge when it
+came in after the due date.
+
+Nothing is uploaded to this portal — the work stays where the student made it.
+That is what most classes already do informally; this just records it.
+
+The owner of a submission is stamped by a database trigger from the signed-in
+session, so a student editing the request cannot hand in as somebody else, and
+replacing a link keeps the original `submitted_at` so lateness cannot be
+laundered by resubmitting.
+
+**The due date locks the hand-in.** A student may replace their link as often
+as they like until the deadline; after it, they cannot submit, change or
+withdraw anything. Teachers are unaffected — and extending an assignment's due
+date reopens it, which is how you grant an extension.
+
+"Due 12 September" means the student has all of the 12th, so the cut-off is
+midnight at the end of it. Which midnight depends on a timezone, and there is
+exactly one place that decides: `public.school_timezone()` in migration 0011,
+set to `Asia/Kolkata`. **Change it if your students are somewhere else** — the
+browser works the deadline out in its own local timezone, so a mismatch makes
+the page and the database disagree about whether an assignment is still open.
+When they do disagree the database wins, and the page says so plainly rather
+than showing a row-level-security error.
+
+Requires `0010_assignment_submissions.sql` and
+`0011_lock_submissions_at_deadline.sql`.
+
+### Scheduled tests take priority
+
+A test with a deadline is the only time-critical thing in the portal, so it is
+promoted out of the Tests tab into a banner above the tabs on the student
+dashboard, with a live countdown. A student who opened the site to read a
+notice cannot miss an exam closing in twenty minutes.
+
+Only one banner ever shows — two competing "urgent" strips would teach students
+to ignore both. The soonest deadline wins; an undated test is surfaced only
+when nothing is scheduled. The Tests tab sorts the same way, so the two never
+disagree about what matters most.
+
 ### What the lockdown config does
 
 `src/lib/seb.js` generates a standard exam configuration: full-screen kiosk
@@ -172,8 +252,11 @@ Google hosts it needs — are allowed through the URL filter.
 Quitting is password-protected, so a student cannot leave mid-exam. The quit
 password is stored in `test_secrets`, readable only by admins; it is on the
 test's card for an invigilator who needs to release a stuck machine. The one
-exception is the config's `quitURL`: the exam page navigates there three
+exception is the config's `quitURL`: the exam page navigates there five
 seconds after a submission, which closes Safe Exam Browser without a prompt.
+Those five seconds are shown as a counting-down ring rather than simply waited
+out — a locked-down browser that closes itself with no warning reads as a
+crash, which is the wrong thing to feel just after finishing an exam.
 
 ### Security setup (required)
 

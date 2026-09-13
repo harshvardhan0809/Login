@@ -9,8 +9,6 @@
     <link rel="stylesheet" href="/src/styles/style.css" />
   </head>
   <body>
-    <canvas id="snow" aria-hidden="true"></canvas>
-
     <main class="card dashboard-card">
       <header class="page-header">
         <div>
@@ -82,6 +80,27 @@
                 required
               ></textarea>
             </div>
+            <div class="field">
+              <label for="noticeCategory">Category</label>
+              <select id="noticeCategory">
+                <option value="general">General</option>
+                <option value="academic">Academic</option>
+                <option value="exam">Exam</option>
+                <option value="event">Event</option>
+                <option value="holiday">Holiday</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="noticePriority">Priority</label>
+              <select id="noticePriority">
+                <option value="normal">Normal</option>
+                <option value="high">Important</option>
+                <option value="urgent">Urgent</option>
+              </select>
+              <small class="hint">
+                Important and Urgent move to the top of every student's board.
+              </small>
+            </div>
             <label class="checkbox-field" for="noticePinned">
               <input id="noticePinned" type="checkbox" />
               <span>Pin to the top of the notice board</span>
@@ -125,7 +144,16 @@
             <div class="field">
               <label for="assignmentLink">Link <span class="optional">(optional)</span></label>
               <input id="assignmentLink" type="url" placeholder="https://drive.google.com/..." />
+              <small class="hint">The worksheet or brief you are handing out.</small>
             </div>
+            <label class="checkbox-field" for="assignmentAcceptsSubmissions">
+              <input id="assignmentAcceptsSubmissions" type="checkbox" />
+              <span>Students hand in a link to their work</span>
+            </label>
+            <small class="hint">
+              Adds a Submit button to this assignment. Students paste a Google Docs, Drive or other
+              link; you get the list here.
+            </small>
           </form>
 
           <button id="addAssignmentBtn" type="button">Add Assignment</button>
@@ -268,6 +296,18 @@
           <h2>Student Results</h2>
           <span id="adminResultsCount">0 results</span>
         </div>
+
+        <div class="panel-cta">
+          <div>
+            <h3>Full analysis</h3>
+            <p class="sub">
+              Class averages, the score distribution, which questions were missed most, and a
+              per-student breakdown you can export.
+            </p>
+          </div>
+          <a class="start-btn" href="results.html">Open Analysis</a>
+        </div>
+
         <div id="adminResultsList"></div>
       </section>
 

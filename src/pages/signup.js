@@ -1,6 +1,5 @@
 import { supabase, uploadAvatar } from "../lib/supabase.js";
 import { errorMessage, onSubmit, setBusy, toast } from "../lib/ui.js";
-import "../lib/snow.js";
 
 const nameEl = document.getElementById("name");
 const emailEl = document.getElementById("email");

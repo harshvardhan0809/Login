@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="Detailed analysis of how a class performed on a test." />
+    <title>Results & Analysis · Exam Portal</title>
+    <link rel="icon" href="/favicon.ico" />
+    <link rel="stylesheet" href="/src/styles/style.css" />
+  </head>
+  <body>
+    <main class="card dashboard-card analysis-card">
+      <header class="page-header">
+        <div>
+          <p class="eyebrow">Teacher</p>
+          <h1>Results &amp; Analysis</h1>
+          <p class="sub">How the class performed, question by question.</p>
+        </div>
+
+        <div class="header-actions">
+          <button id="exportBtn" type="button" class="edit-btn">Export CSV</button>
+          <button id="backBtn" type="button" class="secondary">Back to Admin</button>
+        </div>
+      </header>
+
+      <div class="field filter-field">
+        <label for="testPicker">Test</label>
+        <select id="testPicker"></select>
+      </div>
+
+      <div id="analysisState"></div>
+
+      <div id="analysisBody" hidden>
+        <div class="stats" id="summaryTiles"></div>
+
+        <div class="section-title">
+          <h2>Score distribution</h2>
+          <span id="distributionNote"></span>
+        </div>
+        <div id="distribution" class="histogram"></div>
+
+        <div class="section-title">
+          <h2>Question analysis</h2>
+          <span id="questionNote"></span>
+        </div>
+        <div id="questionAnalysis"></div>
+
+        <div class="section-title">
+          <h2>Students</h2>
+          <span id="studentNote"></span>
+        </div>
+        <div id="studentTable" class="table-scroll"></div>
+      </div>
+
+      <button type="button" class="secondary" data-logout>Logout</button>
+    </main>
+
+    <footer class="credits-bar">
+      2026 Made by <span class="name">Harshvardhan Dhankhar</span>
+    </footer>
+
+    <script type="module" src="/src/pages/results.js"></script>
+  </body>
+</html>
