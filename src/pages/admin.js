@@ -7,6 +7,9 @@ import {
   formatDuration,
   fromDatetimeLocal,
   isClosed,
+  isPastDue,
+  relativeTime,
+  submissionDeadline,
   toDatetimeLocal,
 } from "../lib/dates.js";
 import {
@@ -17,6 +20,8 @@ import {
 } from "../lib/seb.js";
 import { openQuestionEditor } from "../lib/questionEditor.js";
 import { changePasswordSection } from "../lib/password.js";
+import { noticeCard, sortNotices } from "../lib/noticeBoard.js";
+import { isMissingSubmissions } from "../lib/assignmentSubmit.js";
 import {
   countLabel,
   el,
@@ -27,7 +32,6 @@ import {
   toast,
   wireTabs,
 } from "../lib/ui.js";
-import "../lib/snow.js";
 
 const addTestBtn = document.getElementById("addTestBtn");
 const testTitle = document.getElementById("testTitle");
@@ -47,6 +51,8 @@ const addNoticeBtn = document.getElementById("addNoticeBtn");
 const noticeTitle = document.getElementById("noticeTitle");
 const noticeBody = document.getElementById("noticeBody");
 const noticePinned = document.getElementById("noticePinned");
+const noticeCategory = document.getElementById("noticeCategory");
+const noticePriority = document.getElementById("noticePriority");
 const adminNoticesList = document.getElementById("adminNoticesList");
 const adminNoticesCount = document.getElementById("adminNoticesCount");
 const addAssignmentBtn = document.getElementById("addAssignmentBtn");
@@ -55,6 +61,7 @@ const assignmentSubject = document.getElementById("assignmentSubject");
 const assignmentDescription = document.getElementById("assignmentDescription");
 const assignmentDue = document.getElementById("assignmentDue");
 const assignmentLink = document.getElementById("assignmentLink");
+const assignmentAccepts = document.getElementById("assignmentAcceptsSubmissions");
 const adminAssignmentsList = document.getElementById("adminAssignmentsList");
 const adminAssignmentsCount = document.getElementById("adminAssignmentsCount");
 const addVideoBtn = document.getElementById("addVideoBtn");
@@ -783,33 +790,6 @@ async function loadVideos() {
   renderList(adminVideosList, videos, videoCard, "No videos have been added yet.");
 }
 
-/** A management card with a Delete button, shared by notices and assignments. */
-function managedCard({ className = "test-card", info, label, onDelete, reload }) {
-  const deleteBtn = el("button", { type: "button", className: "delete-btn", text: "Delete" });
-
-  deleteBtn.addEventListener("click", async () => {
-    if (!confirm(`Delete "${label}"? This cannot be undone.`)) return;
-
-    const reset = setBusy(deleteBtn, "Deleting...");
-    const { error } = await onDelete();
-    reset();
-
-    if (error) {
-      console.error("Delete failed:", error.message);
-      toast(errorMessage(error, "Could not delete it."), "error");
-      return;
-    }
-
-    toast("Deleted.", "success");
-    await reload();
-  });
-
-  return el("article", { className }, [
-    el("div", { className: "test-info" }, info),
-    el("div", { className: "admin-actions" }, [deleteBtn]),
-  ]);
-}
-
 addNoticeBtn.addEventListener("click", async () => {
   const title = noticeTitle.value.trim();
   const body = noticeBody.value.trim();
@@ -820,16 +800,22 @@ addNoticeBtn.addEventListener("click", async () => {
   }
 
   const reset = setBusy(addNoticeBtn, "Posting...");
-  const { error } = await supabase
-    .from("notices")
-    .insert([{ title, body, pinned: noticePinned.checked }]);
+  const { error } = await supabase.from("notices").insert([
+    {
+      title,
+      body,
+      pinned: noticePinned.checked,
+      category: noticeCategory.value,
+      priority: noticePriority.value,
+    },
+  ]);
   reset();
 
   if (error) {
     console.error("Post notice failed:", error.message);
     toast(
-      isMissingTable(error)
-        ? setupHint("Notices", "0004_notices_assignments.sql")
+      isMissingTable(error) || isMissingColumn(error)
+        ? "Run supabase/migrations/0009_analytics_and_notices.sql to enable the notice board."
         : errorMessage(error, "Could not post the notice."),
       "error"
     );
@@ -839,17 +825,43 @@ addNoticeBtn.addEventListener("click", async () => {
   noticeTitle.value = "";
   noticeBody.value = "";
   noticePinned.checked = false;
+  noticeCategory.value = "general";
+  noticePriority.value = "normal";
   toast("Notice posted.", "success");
   await loadNotices();
 });
 
+function deleteNoticeBtn(notice) {
+  const button = el("button", { type: "button", className: "delete-btn", text: "Delete" });
+
+  button.addEventListener("click", async () => {
+    if (!confirm(`Delete "${notice.title}"? This cannot be undone.`)) return;
+
+    const reset = setBusy(button, "Deleting...");
+    const { error } = await supabase.from("notices").delete().eq("id", notice.id);
+    reset();
+
+    if (error) {
+      console.error("Delete notice failed:", error.message);
+      toast(errorMessage(error, "Could not delete the notice."), "error");
+      return;
+    }
+
+    toast("Notice deleted.", "success");
+    await loadNotices();
+  });
+
+  return button;
+}
+
 async function loadNotices() {
   setNotice(adminNoticesList, "Loading notices...");
 
+  // Ordering is applied by sortNotices() below, which is shared with the
+  // student board so the two lists cannot disagree about what comes first.
   const { data, error } = await supabase
     .from("notices")
     .select("*")
-    .order("pinned", { ascending: false })
     .order("created_at", { ascending: false });
 
   if (error) {
@@ -864,22 +876,15 @@ async function loadNotices() {
     return;
   }
 
-  const notices = data ?? [];
+  const notices = sortNotices(data ?? []);
   adminNoticesCount.textContent = countLabel(notices.length, "notice");
 
+  // Rendered with the student's own component, so a teacher composing a notice
+  // sees exactly what the class will see rather than an admin-only summary.
   renderList(
     adminNoticesList,
     notices,
-    notice =>
-      managedCard({
-        label: notice.title,
-        info: [
-          el("h4", { text: `${notice.pinned ? "\u{1F4CC} " : ""}${notice.title}` }),
-          el("p", { text: notice.body }),
-        ],
-        onDelete: () => supabase.from("notices").delete().eq("id", notice.id),
-        reload: loadNotices,
-      }),
+    notice => noticeCard(notice, [deleteNoticeBtn(notice)]),
     "No notices have been posted yet."
   );
 }
@@ -906,6 +911,7 @@ addAssignmentBtn.addEventListener("click", async () => {
       description: assignmentDescription.value.trim() || null,
       due_date: assignmentDue.value || null,
       link_url: link || null,
+      accepts_submissions: assignmentAccepts.checked,
     },
   ]);
   reset();
@@ -913,9 +919,11 @@ addAssignmentBtn.addEventListener("click", async () => {
   if (error) {
     console.error("Create assignment failed:", error.message);
     toast(
-      isMissingTable(error)
-        ? setupHint("Assignments", "0004_notices_assignments.sql")
-        : errorMessage(error, "Could not add the assignment."),
+      isMissingColumn(error)
+        ? "Run supabase/migrations/0010_assignment_submissions.sql to enable hand-ins."
+        : isMissingTable(error)
+          ? setupHint("Assignments", "0004_notices_assignments.sql")
+          : errorMessage(error, "Could not add the assignment."),
       "error"
     );
     return;
@@ -928,17 +936,159 @@ addAssignmentBtn.addEventListener("click", async () => {
     assignmentDue,
     assignmentLink,
   ].forEach(input => (input.value = ""));
+  assignmentAccepts.checked = false;
   toast("Assignment added.", "success");
   await loadAssignments();
 });
 
+/** Hand-ins for the whole class, keyed by assignment id. */
+let submissionsByAssignment = new Map();
+
+/** One student's hand-in, as a row in the expanded list. */
+function submissionRow(submission, dueDate) {
+  // Students are blocked after the deadline, so this can only appear on work
+  // handed in before that rule existed, or where a teacher has since brought
+  // the due date forward.
+  const deadline = submissionDeadline(dueDate);
+  const late =
+    deadline && new Date(submission.submitted_at) > deadline
+      ? el("span", { className: "pill pill-closed", text: "Late" })
+      : null;
+
+  const meta = [el("span", { text: relativeTime(submission.updated_at) })];
+  if (submission.note)
+    meta.push(el("span", { className: "dot" }), el("span", { text: submission.note }));
+
+  return el("article", { className: "submission-row" }, [
+    el("div", { className: "submission-who" }, [
+      el("span", { className: "cell-email", text: submission.email }),
+      ...(late ? [late] : []),
+    ]),
+    el("div", { className: "submission-detail" }, meta),
+    el("a", {
+      className: "edit-btn",
+      href: submission.link_url,
+      target: "_blank",
+      rel: "noreferrer",
+      text: "Open work",
+    }),
+  ]);
+}
+
+function assignmentCard(assignment) {
+  const handIns = submissionsByAssignment.get(assignment.id) ?? [];
+
+  const info = [
+    el("h4", { text: assignment.title }),
+    el("p", { text: assignment.subject }),
+    el("small", { className: "seb-note", text: dueStatus(assignment.due_date).label }),
+  ];
+
+  if (assignment.accepts_submissions) {
+    const closed = isPastDue(assignment.due_date);
+    const deadline = submissionDeadline(assignment.due_date);
+
+    info.push(
+      el("small", {
+        className: "seb-note",
+        text: handIns.length
+          ? `${countLabel(handIns.length, "hand-in")} received`
+          : "Accepting hand-ins — none yet",
+      })
+    );
+
+    // Whether students can still write is the thing a teacher needs before
+    // deciding to extend the due date, so it is stated rather than inferred
+    // from the due badge above.
+    info.push(
+      el("small", {
+        className: "seb-note",
+        text: closed
+          ? "Closed — students can no longer submit or change their work"
+          : deadline
+            ? `Open until ${formatDateTime(deadline)}`
+            : "Open — no deadline set",
+      })
+    );
+  }
+
+  const actions = [];
+  const list = el("div", { className: "submission-list", hidden: true });
+
+  if (assignment.accepts_submissions && handIns.length) {
+    const toggle = el("button", {
+      type: "button",
+      className: "edit-btn",
+      text: `View ${countLabel(handIns.length, "hand-in")}`,
+    });
+
+    toggle.addEventListener("click", () => {
+      list.hidden = !list.hidden;
+      toggle.textContent = list.hidden
+        ? `View ${countLabel(handIns.length, "hand-in")}`
+        : "Hide hand-ins";
+    });
+
+    list.replaceChildren(...handIns.map(row => submissionRow(row, assignment.due_date)));
+    actions.push(toggle);
+  }
+
+  const deleteBtn = el("button", { type: "button", className: "delete-btn", text: "Delete" });
+
+  deleteBtn.addEventListener("click", async () => {
+    if (!confirm(`Delete "${assignment.title}"? This cannot be undone.`)) return;
+
+    const reset = setBusy(deleteBtn, "Deleting...");
+    const { error } = await supabase.from("assignments").delete().eq("id", assignment.id);
+    reset();
+
+    if (error) {
+      console.error("Delete assignment failed:", error.message);
+      toast(errorMessage(error, "Could not delete it."), "error");
+      return;
+    }
+
+    toast("Deleted.", "success");
+    await loadAssignments();
+  });
+
+  actions.push(deleteBtn);
+
+  return el("article", { className: "test-card assignment-card-block" }, [
+    el("div", { className: "assignment-top" }, [
+      el("div", { className: "test-info" }, info),
+      el("div", { className: "admin-actions" }, actions),
+    ]),
+    list,
+  ]);
+}
+
 async function loadAssignments() {
   setNotice(adminAssignmentsList, "Loading assignments...");
 
-  const { data, error } = await supabase
-    .from("assignments")
-    .select("*")
-    .order("due_date", { ascending: true, nullsFirst: false });
+  const [{ data, error }, submissions] = await Promise.all([
+    supabase
+      .from("assignments")
+      .select("*")
+      .order("due_date", { ascending: true, nullsFirst: false }),
+    supabase.from("assignment_submissions").select("*").order("updated_at", { ascending: false }),
+  ]);
+
+  // Hand-ins are extra detail. Without migration 0010 the assignment list must
+  // still render, just with no submission counts.
+  submissionsByAssignment = new Map();
+  if (submissions.error) {
+    if (!isMissingSubmissions(submissions.error)) {
+      console.error("Could not load submissions:", submissions.error.message);
+    }
+  } else {
+    for (const row of submissions.data ?? []) {
+      if (!submissionsByAssignment.has(row.assignment_id)) {
+        submissionsByAssignment.set(row.assignment_id, []);
+      }
+      submissionsByAssignment.get(row.assignment_id).push(row);
+    }
+  }
 
   if (error) {
     console.error("Error loading assignments:", error.message);
@@ -958,17 +1108,7 @@ async function loadAssignments() {
   renderList(
     adminAssignmentsList,
     assignments,
-    assignment =>
-      managedCard({
-        label: assignment.title,
-        info: [
-          el("h4", { text: assignment.title }),
-          el("p", { text: assignment.subject }),
-          el("small", { text: dueStatus(assignment.due_date).label }),
-        ],
-        onDelete: () => supabase.from("assignments").delete().eq("id", assignment.id),
-        reload: loadAssignments,
-      }),
+    assignment => assignmentCard(assignment),
     "No assignments have been set yet."
   );
 }

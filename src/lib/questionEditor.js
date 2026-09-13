@@ -16,6 +16,14 @@ const TYPES = [
   { value: "text", label: "Short answer", hint: "Typed answer, matched exactly" },
 ];
 
+/**
+ * How many blank options a new choice question starts with.
+ *
+ * Four is what almost every multiple-choice paper uses, so the common case
+ * needs no clicking at all. Options can still be added or removed.
+ */
+const DEFAULT_OPTIONS = 4;
+
 /** Options carry stable ids so the answer key survives reordering and edits. */
 function optionId() {
   return crypto.randomUUID().slice(0, 8);
@@ -129,10 +137,10 @@ function composer(testId, onSaved, nextPosition) {
     textField.hidden = !isText;
 
     if (!isText && state.options.length === 0) {
-      state.options = [
-        { id: optionId(), text: "" },
-        { id: optionId(), text: "" },
-      ];
+      state.options = Array.from({ length: DEFAULT_OPTIONS }, () => ({
+        id: optionId(),
+        text: "",
+      }));
     }
     renderOptions();
   }

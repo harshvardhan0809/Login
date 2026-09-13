@@ -9,8 +9,6 @@
     <link rel="stylesheet" href="/src/styles/style.css" />
   </head>
   <body>
-    <canvas id="snow" aria-hidden="true"></canvas>
-
     <a class="profile-menu" href="profile.html" aria-label="Open profile settings">
       <img id="profileIcon" class="profile-icon" alt="Your profile picture" />
     </a>
@@ -23,6 +21,8 @@
           <p class="sub">Track assigned tests, start new attempts, and review your scores.</p>
         </div>
       </header>
+
+      <div id="examAlert"></div>
 
       <nav class="tabs" role="tablist" aria-label="Dashboard sections">
         <button type="button" class="tab" role="tab" data-tab="notices" aria-selected="true">

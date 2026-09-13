@@ -2,7 +2,6 @@ import { supabase } from "../lib/supabase.js";
 import { getRole } from "../lib/session.js";
 import { sendResetEmail } from "../lib/password.js";
 import { errorMessage, onSubmit, setBusy, toast } from "../lib/ui.js";
-import "../lib/snow.js";
 
 const emailEl = document.getElementById("email");
 const passwordEl = document.getElementById("password");

@@ -2,7 +2,6 @@ import { supabase, uploadAvatar, DEFAULT_AVATAR } from "../lib/supabase.js";
 import { requireUser } from "../lib/session.js";
 import { changePasswordSection } from "../lib/password.js";
 import { errorMessage, setBusy, toast } from "../lib/ui.js";
-import "../lib/snow.js";
 
 const avatarPreview = document.getElementById("avatarPreview");
 const nameInput = document.getElementById("nameInput");
