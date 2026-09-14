@@ -63,7 +63,7 @@ export function changePasswordSection() {
   });
   const saveBtn = el("button", {
     type: "button",
-    className: "secondary",
+    className: "secondary block",
     text: "Update Password",
   });
 

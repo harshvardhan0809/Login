@@ -182,6 +182,9 @@ export function studentRows(results, questions) {
         // even for a student who attempted before a question was added.
         marks: order.map(id => byQuestion.get(id)?.correct ?? null),
         hasDetail: detail.length > 0,
+        // How the paper was sat. null means not recorded, never "failed".
+        viaSeb: result.via_seb ?? null,
+        sebApi: result.seb_api ?? null,
       };
     })
     .sort((a, b) => b.percentage - a.percentage);

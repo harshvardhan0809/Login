@@ -105,12 +105,18 @@ A test is a **draft** until you publish it, so questions are always finished
 before anyone can open the paper. On the admin page's **Tests** tab:
 
 1. **Create Draft.** Choose where the questions live — written here and
-   auto-graded, or an existing Google Form. Set the maximum time and the
-   deadline if you want them.
+   auto-graded, or an existing Google Form. Set the maximum time, the start
+   time and the deadline if you want them.
 2. **Questions.** Build the paper. (Skipped for a Google Form.)
 3. **Publish.** This is the point students first see the test. Publishing also
    generates the Safe Exam Browser config, hosts it, and mints a quit password,
    which the card then shows you.
+
+**Start time** is optional: publish whenever you like and the test unlocks
+itself at that moment. Students see a scheduled test before it opens — that is
+the point, they need to know it is coming — but `get_exam()` refuses to hand
+out questions until the time arrives, and the card shows a live countdown
+instead of a Start button.
 
 **Maximum time** is minutes from the moment a student opens the test;
 **deadline** is a wall-clock moment after which nobody can start or submit.
@@ -158,6 +164,81 @@ CDN — the lockdown browser's URL filter would block an external CDN, and an
 exam should not depend on someone else's uptime. It is split into its own
 chunk, so only the admin and exam pages download it.
 
+### Users and records
+
+The **Results** tab links to `users.html`, where a teacher can see everyone on
+the portal and put things right by hand:
+
+- **Adjust or add a mark.** Set any score against any test, including for a
+  student who never sat it — useful for a paper sat offline, or a regrade.
+- **Delete a mark.**
+- **Allow a retake.** Clears the result _and_ the attempt row. Both matter: the
+  attempt holds the clock and the result is what blocks a second go, so a
+  machine that died mid-exam leaves both behind and clearing one is not enough.
+- **Promote to teacher, or back to student.**
+- **Clear a student's records** — every mark, attempt and hand-in.
+- Search, per-user detail, and a CSV export of the whole directory.
+
+**Every manual score change is recorded** — who made it, when, and why — and
+shown wherever that mark appears, as an "Adjusted" badge. A mark a teacher can
+silently overwrite is not a mark anyone should trust. Adjusting a score
+deliberately does _not_ touch `results.detail`, so question analysis keeps
+reflecting what the student actually answered.
+
+Two things worth knowing:
+
+**Role changes here are not the whole story.** `ADMIN_EMAILS` in `.env` stays
+authoritative, and `npm run admin:promote` demotes anybody not listed there —
+so a promotion made in the UI is undone by the next sync unless you update
+`.env` to match. The page says so when you use it.
+
+**Deleting a login is a command, not a button.** The UI clears a student's
+records but cannot remove their account: that lives in `auth.users` and needs
+the service role. That is deliberate — deleting an account should not be one
+misclick away.
+
+```bash
+npm run user:purge -- someone@example.com --dry-run   # report, delete nothing
+npm run user:purge -- someone@example.com             # records + login
+npm run user:purge -- someone@example.com --records-only
+```
+
+#### Why these are functions, not table policies
+
+`INSERT`/`UPDATE`/`DELETE` on `results` and `users` are revoked from
+`authenticated` — and an admin _is_ `authenticated`. A policy can never grant a
+privilege the role does not hold, so the long-standing "results: admins manage"
+policy has in fact been doing nothing.
+
+That revoke is what guarantees no student can ever write their own score, and
+it is worth keeping exactly as it is. So admin writes go through
+`SECURITY DEFINER` functions in `0013_admin_user_management.sql`, each of which
+checks `is_admin()` itself. A student calling one gets a permission error from
+inside it.
+
+### Who a test is for
+
+Every test is for everybody unless you say otherwise. The **Audience** button
+on a test card switches it between _Everyone_ and _Only selected students_,
+with a searchable roll and a "Select shown" button that acts on whatever the
+search is filtering — so assigning one class out of a whole school is a search
+and one click.
+
+A limited test with nobody selected is visible to nobody, and the card says so
+rather than letting it look assigned.
+
+This is enforced in two places, and it needs both:
+
+1. The RLS policy on `tests`, so an unlisted student never receives the row at
+   all — it simply is not on their dashboard.
+2. Inside `get_exam()`, which is `SECURITY DEFINER` and therefore bypasses RLS
+   entirely. Without its own check, a student holding a direct link to
+   `exam.html?test=…` would walk straight past the policy. They now get a
+   "Not assigned to you" panel.
+
+Switching a test back to _Everyone_ keeps the selection, so flipping between
+the two does not lose your list.
+
 ### Results and analysis
 
 The **Results** tab links to a full analysis page (`results.html`), one test at
@@ -176,7 +257,7 @@ a time:
 - **Per-student table** with a tick or cross for every question, and a CSV
   export.
 
-This runs on `results.detail`, a per-question record written by `submit_exam()`
+This runs on `result_details`, a per-question record written by `submit_exam()`
 at grading time (migration 0009). Attempts submitted before that migration have
 no detail, so they still count toward scores and distribution but not toward
 question analysis — the page says so rather than showing a misleading zero.
@@ -238,6 +319,42 @@ to ignore both. The soonest deadline wins; an undated test is surfaced only
 when nothing is scheduled. The Tests tab sorts the same way, so the two never
 disagree about what matters most.
 
+### Safe Exam Browser is enforced, not just offered
+
+`get_exam()` and `submit_exam()` refuse a protected test unless the request
+comes from Safe Exam Browser, which marks its user agent with `SEB/<version>`.
+Opening `exam.html?test=…` in an ordinary browser shows an "Open in Safe Exam
+Browser" panel instead of the paper, and — because the check runs before the
+attempt row is created — does not start the student's clock. Teachers are
+exempt, so a published test can still be checked from Chrome.
+
+That check stops copy-and-paste. It does not stop someone who fakes the header,
+so every attempt also records what was seen: the header verdict, whether the
+exam page found SEB's own JavaScript API, and the raw user agent. Results then
+carry a flag:
+
+- **Not in SEB** — the attempt did not come from SEB. Students are refused, so
+  in practice this is a teacher's attempt, or protection toggled around it.
+- **SEB unconfirmed** — the browser _claimed_ to be SEB but the page could not
+  find SEB's API. That points to a faked identity, or an SEB version too old to
+  provide the API. Sit one test in your own SEB after deploying: if your genuine
+  attempt shows this flag, the signal is not reliable for your SEB version.
+
+Results recorded before this existed carry neither flag — not recorded is not
+the same as failed.
+
+If SEB is ever wrongly not recognised, the panel shows the browser identity
+that was seen, and unticking "Protect with Safe Exam Browser" on that test is
+the immediate way round it.
+
+### Per-question marks are teacher-only
+
+Which answers a student got right lives in `result_details`, readable only by
+teachers. It used to be a column on `results`, which every student could read
+for their own attempt — and on a single-choice question a correct entry _is_
+the answer, so a student who finished early could pass the key to one who had
+not started.
+
 ### What the lockdown config does
 
 `src/lib/seb.js` generates a standard exam configuration: full-screen kiosk
@@ -257,6 +374,13 @@ seconds after a submission, which closes Safe Exam Browser without a prompt.
 Those five seconds are shown as a counting-down ring rather than simply waited
 out — a locked-down browser that closes itself with no warning reads as a
 crash, which is the wrong thing to feel just after finishing an exam.
+
+### Security setup (required)
+
+> **Run `0015_policy_reset.sql` before anything else on an existing install.**
+> Until it is applied, `users`, `tests` and `results` are readable by anyone
+> holding the anon key — which is published in the JavaScript bundle by design.
+> See "How a leak like that survived" below.
 
 ### Security setup (required)
 
@@ -348,6 +472,45 @@ would be readable by everyone and — more importantly — a client-side check i
 not a permission. `requireAdmin()` in `src/lib/session.js` only decides what UI
 to render; the RLS policies are what actually stop a non-admin from writing.
 Both need to be in place.
+
+### How a leak like that survived
+
+Migration 0001 and its successors drop policies **by name** before recreating
+them. The original app — before any hardening existed — had its own permissive
+policies under different names, most likely the Supabase dashboard's "Enable
+read access for all users" template. Nothing ever dropped those, so they sat
+alongside the correct policies.
+
+PostgreSQL OR's permissive policies together. **One policy saying `true`
+defeats every careful policy beside it**, and nothing in the app surfaces that
+— the code looked right, the new policies were right, and the data was public
+anyway.
+
+`0015_policy_reset.sql` therefore does not trust names: it enumerates every
+policy actually present on the app's tables, drops all of them, and rebuilds
+the correct set. It also revokes `anon` from every table, since nothing here
+is for signed-out visitors.
+
+To check rather than assume:
+
+```sql
+select jsonb_pretty(public.security_report());
+```
+
+That returns, per table, whether RLS is on, every policy in force, and — the
+thing that caused this — any privilege still granted to `anon`.
+
+### The quit password is public by construction
+
+A `.seb` config is served from a **public** bucket. It has to be: Safe Exam
+Browser fetches it before anyone signs in. That file carries the unsalted
+SHA-256 of the test's quit password, so anyone can download it and attack the
+hash offline.
+
+Quit passwords are therefore twelve characters from a 28-character alphabet
+(~2×10¹⁷ combinations, months of GPU work) rather than eight (~4×10¹¹, under a
+minute). Tests created before this change keep their old eight-character
+password until you press **Refresh lockdown** on them.
 
 ## Deploying
 

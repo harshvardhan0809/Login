@@ -11,6 +11,7 @@ import { requireAdmin, wireLogout } from "../lib/session.js";
 import { countLabel, el, renderList, setNotice, toast } from "../lib/ui.js";
 import { formatDateTime } from "../lib/dates.js";
 import { mathText } from "../lib/math.js";
+import { sebBadge } from "../lib/sebBadge.js";
 import {
   distribution,
   downloadCsv,
@@ -132,7 +133,7 @@ function renderQuestions(items) {
 }
 
 /** One header cell plus one cell per question, then the totals. */
-function renderStudents(rows, questions) {
+function renderStudents(rows, questions, test) {
   studentNote.textContent = countLabel(rows.length, "student");
 
   if (!rows.length) {
@@ -150,9 +151,15 @@ function renderStudents(rows, questions) {
     el("th", { text: "Submitted" }),
   ]);
 
-  const body = rows.map(row =>
-    el("tr", {}, [
-      el("td", { className: "cell-email", text: row.email }),
+  const body = rows.map(row => {
+    const seb = sebBadge({
+      requiresSeb: test?.requires_seb,
+      viaSeb: row.viaSeb,
+      sebApi: row.sebApi,
+    });
+
+    return el("tr", {}, [
+      el("td", { className: "cell-email" }, seb ? [row.email, " ", seb] : [row.email]),
       ...row.marks.map(mark =>
         el("td", {
           className: `cell-q mark-${mark === null ? "none" : mark ? "right" : "wrong"}`,
@@ -167,8 +174,8 @@ function renderStudents(rows, questions) {
         text: `${row.percentage}%`,
       }),
       el("td", { className: "cell-date", text: formatDateTime(row.attemptedAt) }),
-    ])
-  );
+    ]);
+  });
 
   studentEl.replaceChildren(
     el("table", { className: "data-table" }, [el("thead", {}, [head]), el("tbody", {}, body)])
@@ -205,7 +212,7 @@ function render() {
   renderSummary(scoreStats(results, PASS_MARK));
   renderDistribution(distribution(results), results.length);
   renderQuestions(questionAnalysis(questions, results));
-  renderStudents(studentRows(results, questions), questions);
+  renderStudents(studentRows(results, questions), questions, test);
 }
 
 function exportCurrent() {
@@ -227,6 +234,7 @@ function exportCurrent() {
     "Total",
     "Percentage",
     "Submitted",
+    "Safe Exam Browser",
   ];
 
   const body = rows.map(row => [
@@ -236,6 +244,15 @@ function exportCurrent() {
     row.total,
     row.percentage,
     formatDateTime(row.attemptedAt),
+    !test.requires_seb
+      ? "not required"
+      : row.viaSeb === false
+        ? "NOT in SEB"
+        : row.viaSeb === true && row.sebApi === false
+          ? "unconfirmed"
+          : row.viaSeb === true
+            ? "yes"
+            : "not recorded",
   ]);
 
   const slug = test.title
@@ -249,13 +266,16 @@ function exportCurrent() {
 async function load() {
   setNotice(stateEl, "Loading results...");
 
-  const [testRows, questionRows, resultRows] = await Promise.all([
+  const [testRows, questionRows, resultRows, detailRows] = await Promise.all([
     supabase
       .from("tests")
-      .select("id, title, subject, status")
+      .select("id, title, subject, status, requires_seb")
       .order("created_at", { ascending: false }),
     supabase.from("questions").select("*").order("position", { ascending: true }),
     supabase.from("results").select("*").order("attempted_at", { ascending: false }),
+    // Per-question detail lives in its own teacher-only table, so students
+    // cannot read which of their answers were correct and pass them on.
+    supabase.from("result_details").select("result_id, detail"),
   ]);
 
   if (testRows.error || resultRows.error) {
@@ -277,8 +297,16 @@ async function load() {
     questionsByTest.get(question.test_id).push(question);
   }
 
+  // Missing only until migration 0016 has run; question analysis is then
+  // simply empty rather than the page failing.
+  if (detailRows.error && !isMissingTable(detailRows.error)) {
+    console.error("Could not load per-question detail:", detailRows.error.message);
+  }
+  const detailByResult = new Map((detailRows.data ?? []).map(row => [row.result_id, row.detail]));
+
   resultsByTest = new Map();
-  for (const result of resultRows.data ?? []) {
+  for (const row of resultRows.data ?? []) {
+    const result = { ...row, detail: detailByResult.get(row.id) ?? row.detail ?? [] };
     // A result whose test was deleted has a null test_id and belongs to no
     // paper; it would otherwise create a phantom entry in the picker.
     if (!result.test_id) continue;

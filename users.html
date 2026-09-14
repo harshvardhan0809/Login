@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="Manage students, their results and their exam attempts." />
+    <title>Users &amp; Records · Exam Portal</title>
+    <link rel="icon" href="/favicon.ico" />
+    <link rel="stylesheet" href="/src/styles/style.css" />
+  </head>
+  <body>
+    <main class="card dashboard-card analysis-card">
+      <header class="page-header" data-reveal>
+        <div>
+          <p class="eyebrow">Teacher</p>
+          <h1>Users &amp; Records</h1>
+          <p class="sub">Everyone on the portal, and every mark and attempt they hold.</p>
+        </div>
+
+        <div class="header-actions">
+          <button id="exportBtn" type="button" class="edit-btn">Export CSV</button>
+          <button id="backBtn" type="button" class="secondary">Back to Admin</button>
+        </div>
+      </header>
+
+      <div class="stats" id="userStats" data-reveal></div>
+
+      <div class="field filter-field" data-reveal>
+        <label for="userSearch">Search</label>
+        <input id="userSearch" type="search" placeholder="Filter by email or role" />
+      </div>
+
+      <div id="directoryState"></div>
+
+      <div class="section-title" data-reveal>
+        <h2>Everyone</h2>
+        <span id="userCount">0 users</span>
+      </div>
+      <div id="userTable" class="table-scroll"></div>
+
+      <section id="userDetail" hidden></section>
+
+      <button type="button" class="secondary" data-logout>Logout</button>
+    </main>
+
+    <footer class="credits-bar">
+      2026 Made by <span class="name">Harshvardhan Dhankhar</span>
+    </footer>
+
+    <script type="module" src="/src/pages/users.js"></script>
+  </body>
+</html>

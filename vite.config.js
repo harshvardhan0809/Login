@@ -44,6 +44,7 @@ export default defineConfig(({ mode }) => {
           resetPassword: page("reset-password.html"),
           exam: page("exam.html"),
           results: page("results.html"),
+          users: page("users.html"),
         },
         output: {
           // Without this, Rollup names the shared vendor chunk after whichever

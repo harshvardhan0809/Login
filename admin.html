@@ -258,6 +258,15 @@
             </div>
 
             <div class="field">
+              <label for="testOpens">Start time <span class="optional">(optional)</span></label>
+              <input id="testOpens" type="datetime-local" />
+              <small class="hint">
+                Students see the test straight away but cannot open it until this moment. Leave
+                blank to make it available as soon as you publish.
+              </small>
+            </div>
+
+            <div class="field">
               <label for="testCloses">Deadline <span class="optional">(optional)</span></label>
               <input id="testCloses" type="datetime-local" />
               <small class="hint">Nobody can start or submit after this moment.</small>
@@ -295,6 +304,17 @@
         <div class="section-title">
           <h2>Student Results</h2>
           <span id="adminResultsCount">0 results</span>
+        </div>
+
+        <div class="panel-cta">
+          <div>
+            <h3>Users &amp; records</h3>
+            <p class="sub">
+              Every student, their marks and their attempts — adjust a score by hand, clear a stuck
+              attempt so someone can sit a test again, or change who is a teacher.
+            </p>
+          </div>
+          <a class="start-btn" href="users.html">Manage Users</a>
         </div>
 
         <div class="panel-cta">
