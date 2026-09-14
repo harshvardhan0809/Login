@@ -1,8 +1,9 @@
 import { supabase, DEFAULT_AVATAR, isMissingTable, setupHint } from "../lib/supabase.js";
 import { requireUser, displayName, wireLogout } from "../lib/session.js";
 import { countLabel, el, renderList, setBusy, setNotice, wireTabs } from "../lib/ui.js";
+import { reveal, revealPage } from "../lib/reveal.js";
 import { describeVideo } from "../lib/video.js";
-import { dueStatus, isClosed, scheduleLabel } from "../lib/dates.js";
+import { dueStatus, formatDateTime, scheduleLabel, testWindow } from "../lib/dates.js";
 import { openSebGate } from "../lib/sebGate.js";
 import { examAlert } from "../lib/examAlert.js";
 import { noticeCard, sortNotices } from "../lib/noticeBoard.js";
@@ -22,6 +23,7 @@ const noticesCount = document.getElementById("noticesCount");
 const assignmentsList = document.getElementById("assignmentsList");
 const assignmentsCount = document.getElementById("assignmentsCount");
 const examAlertMount = document.getElementById("examAlert");
+const studentStats = document.getElementById("studentStats");
 
 const user = await requireUser();
 
@@ -30,6 +32,7 @@ profileIcon.src = user.user_metadata?.photo || DEFAULT_AVATAR;
 profileIcon.alt = `${displayName(user)} profile picture`;
 wireLogout();
 wireTabs(document.querySelector('[role="tablist"]'));
+revealPage();
 
 function videoCard(video) {
   const media = describeVideo(video.video_url);
@@ -66,12 +69,27 @@ function testCard(test) {
   const schedule = scheduleLabel(test);
   if (schedule) info.push(el("small", { className: "seb-note", text: schedule }));
 
+  const { state, opensAt } = testWindow(test);
+
   // Past the deadline there is nothing to start, and the server would refuse
   // anyway — say so here rather than letting the student find out inside SEB.
-  if (isClosed(test)) {
+  if (state === "closed") {
     return el("article", { className: "test-card test-card-closed" }, [
       el("div", { className: "test-info" }, info),
       el("span", { className: "due-badge due-overdue", text: "Closed" }),
+    ]);
+  }
+
+  // Scheduled but not started. The card is deliberately still shown — knowing
+  // a test is coming is the point of scheduling it — but there is nothing to
+  // press, and get_exam() would refuse anyway.
+  if (state === "upcoming") {
+    return el("article", { className: "test-card test-card-upcoming" }, [
+      el("div", { className: "test-info" }, info),
+      el("span", {
+        className: "due-badge due-soon",
+        text: `Opens ${formatDateTime(opensAt)}`,
+      }),
     ]);
   }
 
@@ -292,17 +310,54 @@ async function loadAssignments() {
   renderList(assignmentsList, assignments, assignmentCard, "No assignments have been set yet.");
 }
 
+function tile(value, label) {
+  return el("div", { className: "stat-box" }, [
+    el("p", { className: "stat-value", text: String(value) }),
+    el("p", { text: label }),
+  ]);
+}
+
+/**
+ * The four numbers a student actually wants on opening the page.
+ *
+ * Deliberately their own progress, not the class's: a dashboard that opens
+ * with someone else's average is a leaderboard, which is a different and much
+ * less kind product.
+ */
+function renderStats(pending, results) {
+  const startable = pending.filter(test => testWindow(test).state === "open").length;
+  const percentages = results.map(result => Number(result.percentage) || 0);
+
+  const average = percentages.length
+    ? Math.round(percentages.reduce((sum, value) => sum + value, 0) / percentages.length)
+    : 0;
+
+  studentStats.replaceChildren(
+    tile(startable, "Tests to take"),
+    tile(results.length, "Completed"),
+    tile(percentages.length ? `${average}%` : "—", "Average score"),
+    tile(percentages.length ? `${Math.max(...percentages)}%` : "—", "Best score")
+  );
+  reveal(studentStats.children);
+}
+
 /** Swaps in the banner, disposing of the previous one's countdown interval. */
 function renderExamAlert(openTests) {
   examAlertMount.firstElementChild?.dispatchEvent(new CustomEvent("exam-alert:dispose"));
 
-  const banner = examAlert(openTests, test =>
-    test.requires_seb === false
-      ? location.assign(`exam.html?test=${encodeURIComponent(test.id)}`)
-      : openSebGate(test)
+  const banner = examAlert(
+    openTests,
+    test =>
+      test.requires_seb === false
+        ? location.assign(`exam.html?test=${encodeURIComponent(test.id)}`)
+        : openSebGate(test),
+    // Re-read from the server when a window opens or closes, so the lists and
+    // the stats agree with the banner rather than going stale behind it.
+    loadDashboard
   );
 
   examAlertMount.replaceChildren(...(banner ? [banner] : []));
+  if (banner) reveal([banner]);
 }
 
 async function loadDashboard() {
@@ -334,7 +389,7 @@ async function loadDashboard() {
     const pending = allTests.filter(
       test => test.status === "published" && !attemptedIds.has(test.id)
     );
-    const open = pending.filter(test => !isClosed(test));
+    const open = pending.filter(test => testWindow(test).state !== "closed");
 
     testsCount.textContent = `${open.length} pending`;
 
@@ -348,6 +403,7 @@ async function loadDashboard() {
 
     renderList(testsList, ordered, testCard, "No tests are available right now.");
     renderExamAlert(open);
+    renderStats(pending, allResults);
   }
 
   if (!results.error) {

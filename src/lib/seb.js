@@ -85,14 +85,22 @@ export async function hashQuitPassword(password) {
  * A quit password a teacher can read out over the noise of an exam hall.
  *
  * No look-alike characters (0/O, 1/l/I) and no vowels, so it cannot spell
- * anything unfortunate. ~10^9 combinations, which is far more than enough for
- * something that only matters for the length of one exam.
+ * anything unfortunate, and grouped in fours so it can be dictated.
+ *
+ * Twelve characters rather than eight, because the .seb file is served from a
+ * PUBLIC bucket — it has to be, since SEB fetches it before anyone signs in —
+ * and it carries the unsalted SHA-256 of this password. Eight characters of
+ * this alphabet is about 4x10^11 combinations, which a GPU chews through in
+ * under a minute. Twelve is ~2x10^17, which is not worth anyone's afternoon.
  */
 export function generateQuitPassword() {
   const alphabet = "23456789BCDFGHJKMNPQRSTVWXYZ";
-  const bytes = crypto.getRandomValues(new Uint8Array(8));
+  const bytes = crypto.getRandomValues(new Uint8Array(12));
+  const letters = [...bytes].map(byte => alphabet[byte % alphabet.length]);
 
-  return [...bytes].map(byte => alphabet[byte % alphabet.length]).join("");
+  return [letters.slice(0, 4), letters.slice(4, 8), letters.slice(8)]
+    .map(group => group.join(""))
+    .join("-");
 }
 
 // --- property-list serialisation -------------------------------------------

@@ -14,7 +14,7 @@
     </a>
 
     <main class="card dashboard-card">
-      <header class="page-header">
+      <header class="page-header" data-reveal>
         <div>
           <p class="eyebrow">Student Dashboard</p>
           <h1 id="welcomeText">Welcome!</h1>
@@ -22,9 +22,11 @@
         </div>
       </header>
 
-      <div id="examAlert"></div>
+      <div class="stats" id="studentStats" data-reveal></div>
 
-      <nav class="tabs" role="tablist" aria-label="Dashboard sections">
+      <div id="examAlert" data-reveal></div>
+
+      <nav class="tabs" data-reveal role="tablist" aria-label="Dashboard sections">
         <button type="button" class="tab" role="tab" data-tab="notices" aria-selected="true">
           Notice Board
         </button>
@@ -43,7 +45,7 @@
       </nav>
 
       <section id="panel-notices" role="tabpanel">
-        <div class="section-title">
+        <div class="section-title" data-reveal>
           <h2>Notice Board</h2>
           <span id="noticesCount">0 notices</span>
         </div>
@@ -51,7 +53,7 @@
       </section>
 
       <section id="panel-videos" role="tabpanel" hidden>
-        <div class="section-title">
+        <div class="section-title" data-reveal>
           <h2>Video Lessons</h2>
           <span id="videosCount">0 videos</span>
         </div>
@@ -63,7 +65,7 @@
       </section>
 
       <section id="panel-assignments" role="tabpanel" hidden>
-        <div class="section-title">
+        <div class="section-title" data-reveal>
           <h2>Assignments</h2>
           <span id="assignmentsCount">0 assignments</span>
         </div>
@@ -71,7 +73,7 @@
       </section>
 
       <section id="panel-tests" role="tabpanel" hidden>
-        <div class="section-title">
+        <div class="section-title" data-reveal>
           <h2>Available Tests</h2>
           <span id="testsCount">0 pending</span>
         </div>
@@ -79,7 +81,7 @@
       </section>
 
       <section id="panel-results" role="tabpanel" hidden>
-        <div class="section-title">
+        <div class="section-title" data-reveal>
           <h2>Previous Results</h2>
           <span id="resultsCount">0 attempts</span>
         </div>

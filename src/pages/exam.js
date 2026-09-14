@@ -1,8 +1,9 @@
 import { supabase } from "../lib/supabase.js";
 import { requireUser } from "../lib/session.js";
 import { el, errorMessage, setBusy, setNotice, toast } from "../lib/ui.js";
-import { formatClock, formatDateTime, formatDuration } from "../lib/dates.js";
+import { formatClock, formatCountdown, formatDateTime, formatDuration } from "../lib/dates.js";
 import { isRunningInSeb, sebQuitUrl } from "../lib/seb.js";
+import { openSebGate } from "../lib/sebGate.js";
 import { celebrate } from "../lib/celebrate.js";
 import { mathText, setMathText } from "../lib/math.js";
 
@@ -21,6 +22,14 @@ const clockValueEl = document.getElementById("examClockValue");
 
 /** Seconds SEB stays open after a submission, so the student sees their score. */
 const CLOSE_DELAY_SECONDS = 5;
+
+/**
+ * How long a student may wait inside SEB for a test to open.
+ *
+ * Past this it is kinder to close the browser and let them relaunch than to
+ * hold them in a session they cannot leave.
+ */
+const SEB_WAIT_LIMIT_MS = 2 * 60 * 1000;
 
 backBtn.addEventListener("click", () => location.replace("dashboard.html"));
 
@@ -51,17 +60,17 @@ function stopTimer() {
 }
 
 /**
- * Inside SEB, close the browser shortly after submitting.
+ * Inside SEB, close the browser after a short, visible countdown.
  *
  * Navigating to the config's quitURL is what actually quits SEB; the delay
- * only exists so the student can read their score first. Outside SEB there is
+ * only exists so the student can read the screen first. Outside SEB there is
  * nothing to close, so the Back button stands in for it.
  *
  * The countdown is shown, not just waited out. A locked-down browser closing
  * itself with no warning reads as a crash — which is exactly the wrong thing
  * to feel in the ten seconds after finishing an exam.
  */
-function closeAfterSubmit(container) {
+function closeSeb(container) {
   if (!isRunningInSeb()) return;
 
   const count = el("span", { className: "close-count", text: String(CLOSE_DELAY_SECONDS) });
@@ -208,7 +217,66 @@ function showResult({ score, total, percentage }) {
 
   resultEl.replaceChildren(panel);
   celebrate(panel);
-  closeAfterSubmit(panel);
+  closeSeb(panel);
+}
+
+/**
+ * Ends the page on a message the student cannot act on.
+ *
+ * Inside Safe Exam Browser this MUST also close the browser. Quitting is
+ * password-protected — that is the entire point of the lockdown — so a student
+ * who reaches a dead end with no way out is genuinely stuck until a teacher
+ * walks over and types the password. Relaunching a test they have already
+ * submitted is the easiest way to land here, but every other dead end (no
+ * questions, deadline passed, test deleted) traps them just the same.
+ *
+ * The quit URL is the only exit, so every terminal state routes through here.
+ */
+function deadEnd({ title, message, tone = "error", icon = "!", note, action }) {
+  formEl.hidden = true;
+  // The page's own Back button would be a second, quieter copy of the action
+  // this panel already offers.
+  backBtn.hidden = true;
+
+  const panel = el("div", { className: `state-panel state-panel-${tone}` }, [
+    el("div", { className: "state-icon", text: icon }),
+    el("h2", { className: "state-title", text: title }),
+    el("p", { className: "state-message", text: message }),
+  ]);
+
+  if (note) panel.append(el("small", { className: "hint", text: note }));
+
+  if (isRunningInSeb()) {
+    // No dashboard to send them to from inside the lockdown — the only useful
+    // action is leaving, which closeSeb() does on a visible countdown.
+    closeSeb(panel);
+  } else if (action) {
+    // Some dead ends have a better way forward than the dashboard.
+    const actionBtn = el("button", { type: "button", className: "block", text: action.label });
+    actionBtn.addEventListener("click", action.onClick);
+    panel.append(actionBtn);
+  } else {
+    panel.append(
+      el("p", {
+        className: "state-hint",
+        text:
+          "Your dashboard may be showing an out-of-date list. Refresh it to see " +
+          "what is actually available to you now.",
+      })
+    );
+
+    const refreshBtn = el("button", {
+      type: "button",
+      className: "block",
+      text: "Refresh dashboard",
+    });
+    // replace(), not assign(): this page should not sit in the back stack for
+    // a student to walk into again.
+    refreshBtn.addEventListener("click", () => location.replace("dashboard.html"));
+    panel.append(refreshBtn);
+  }
+
+  stateEl.replaceChildren(panel);
 }
 
 /** Ends the exam without a score, e.g. when time ran out before submitting. */
@@ -221,7 +289,7 @@ function endWithNotice(message, tone = "error") {
   ]);
 
   resultEl.replaceChildren(panel);
-  closeAfterSubmit(panel);
+  closeSeb(panel);
 }
 
 /**
@@ -260,7 +328,7 @@ async function submit(auto = false) {
 
     const message =
       err?.code === "PGRST202"
-        ? "Built-in tests are not set up yet. Run supabase/migrations/0008_exam_delivery.sql."
+        ? "Tests are not set up yet. Run every migration in supabase/migrations/, newest included."
         : errorMessage(err, "Could not submit your test.");
 
     // An auto-submit has no one to retry it — the time it needed is gone — so
@@ -346,24 +414,73 @@ function describeMeta(test) {
   metaEl.textContent = parts.join(" · ");
 }
 
-/** States get_exam can return that end the page before any question loads. */
+/**
+ * States get_exam can return that end the page before any question loads.
+ *
+ * Each carries its own heading, because "why can I not take this test" has
+ * several very different answers and a student needs to know which one they
+ * are looking at — already done is reassuring, missed the deadline is not.
+ */
 const BLOCKED = {
-  not_found: "That test no longer exists.",
-  not_released: "Your teacher has not released this test yet.",
-  already_attempted: "You have already submitted this test. Your result is on your dashboard.",
-  closed: "The deadline for this test has passed.",
-  time_up: "Your time for this test has run out.",
+  not_found: {
+    icon: "?",
+    title: "Test not found",
+    message: "This test no longer exists. Your teacher may have removed it.",
+  },
+  not_released: {
+    icon: "\u{1F512}",
+    title: "Not released yet",
+    message: "Your teacher has not released this test. It will appear when they do.",
+  },
+  not_assigned: {
+    icon: "\u{1F512}",
+    title: "Not assigned to you",
+    message:
+      "This test was set for a specific group of students, and you are not on the list. " +
+      "Speak to your teacher if you think that is a mistake.",
+  },
+  already_attempted: {
+    icon: "\u2713",
+    tone: "done",
+    title: "Already submitted",
+    message: "You have completed this test. Your result is on your dashboard under My Results.",
+  },
+  closed: {
+    icon: "\u23F1",
+    title: "Deadline passed",
+    message: "This test closed before it was submitted, so it can no longer be taken.",
+  },
+  not_open_yet: {
+    icon: "\u{1F512}",
+    title: "Not open yet",
+    message: "This test has not reached its start time.",
+  },
+  time_up: {
+    icon: "\u23F1",
+    title: "Time ran out",
+    message: "Your time for this test has run out, so it can no longer be submitted.",
+  },
 };
 
 async function loadExam() {
   if (!testId) {
-    setNotice(stateEl, "No test was specified.", "error");
+    deadEnd({
+      icon: "?",
+      title: "No test selected",
+      message: "This page was opened without a test. Pick one from your dashboard.",
+    });
     return;
   }
 
   setNotice(stateEl, "Loading test...");
 
-  const { data, error } = await supabase.rpc("get_exam", { p_test_id: testId });
+  const { data, error } = await supabase.rpc("get_exam", {
+    p_test_id: testId,
+    // Whether this page can see SEB's own JavaScript API. Recorded against the
+    // attempt rather than used to refuse: it is what tells a teacher that a
+    // browser merely claiming to be SEB in its user agent was not really SEB.
+    p_seb_api: typeof window.SafeExamBrowser !== "undefined",
+  });
 
   if (error) {
     console.error("Could not load exam:", error.message);
@@ -371,21 +488,85 @@ async function loadExam() {
       error.code === "PGRST202" ||
       /could not find the function|does not exist/i.test(error.message);
 
-    setNotice(
-      stateEl,
-      notSetUp
+    deadEnd({
+      title: notSetUp ? "Tests are not set up" : "Could not load this test",
+      message: notSetUp
         ? "Built-in tests are not set up yet. Run supabase/migrations/0008_exam_delivery.sql."
-        : "Could not load this test. Please go back and try again.",
-      "error"
-    );
+        : "Something went wrong loading this test. Please try again.",
+    });
     return;
   }
 
   if (data?.test) describeTest(data.test);
 
+  // Arriving early is not an error, it is a wait — so it gets the moment it
+  // opens and a live countdown rather than a red notice.
+  if (data?.state === "not_open_yet") {
+    const opensAt = new Date(data.opens_at);
+
+    // Anchored to the server's clock, like the exam timer: the countdown must
+    // reach zero at the moment get_exam() will actually agree the test is
+    // open, or the reload below lands on this same screen again.
+    const skew = Date.parse(data.server_time) - Date.now();
+    const waitMs = opensAt - skew - Date.now();
+
+    // A locked-down browser is a poor waiting room — the student cannot quit
+    // it without a teacher's password. A short wait is worth sitting through;
+    // a long one means come back later, so SEB is closed.
+    if (isRunningInSeb() && waitMs > SEB_WAIT_LIMIT_MS) {
+      deadEnd({
+        icon: "\u{1F512}",
+        tone: "info",
+        title: "Not open yet",
+        message: `This test opens ${formatDateTime(data.opens_at)}. Launch it again then.`,
+      });
+      return;
+    }
+
+    const line = el("p", { className: "notice" });
+    stateEl.replaceChildren(line);
+
+    const tick = () => {
+      const left = opensAt - skew - Date.now();
+      if (left <= 0) {
+        clearInterval(timer);
+        line.textContent = "This test is open now. Reloading...";
+        location.reload();
+        return;
+      }
+      line.textContent = `This test opens ${formatDateTime(data.opens_at)} — in ${formatCountdown(left)}.`;
+    };
+
+    const timer = setInterval(tick, 1000);
+    tick();
+    return;
+  }
+
+  // A protected test opened in an ordinary browser. The database refused to
+  // hand over the paper; rather than a dead end, send the student to the Safe
+  // Exam Browser launcher they skipped.
+  if (data?.state === "seb_required") {
+    deadEnd({
+      icon: "\u{1F512}",
+      tone: "info",
+      title: "Open this test in Safe Exam Browser",
+      message:
+        "This test is protected, so it can only be taken in Safe Exam Browser. " +
+        "Opening its link in an ordinary browser will not start it.",
+      // So a genuine SEB that is not being recognised can be diagnosed from a
+      // screenshot rather than guessed at.
+      note: data.user_agent ? `Browser seen: ${data.user_agent}` : undefined,
+      action: {
+        label: "Open in Safe Exam Browser",
+        onClick: () => openSebGate({ ...data.test, seb_config_url: data.seb_config_url }),
+      },
+    });
+    return;
+  }
+
   const blocked = BLOCKED[data?.state];
   if (blocked) {
-    setNotice(stateEl, blocked, data.state === "already_attempted" ? "info" : "error");
+    deadEnd(blocked);
     return;
   }
 
@@ -393,14 +574,23 @@ async function loadExam() {
   if (data.state === "external") {
     setNotice(stateEl, "Opening your test...");
     if (data.form_url) location.replace(data.form_url);
-    else setNotice(stateEl, "This test has no link set. Please tell your teacher.", "error");
+    else
+      deadEnd({
+        title: "This test has no link",
+        message: "Your teacher has not added the link for this test yet. Please tell them.",
+      });
     return;
   }
 
   questions = data.questions ?? [];
 
   if (!questions.length) {
-    setNotice(stateEl, "Your teacher has not added any questions to this test yet.");
+    deadEnd({
+      icon: "\u{1F4DD}",
+      tone: "info",
+      title: "No questions yet",
+      message: "Your teacher has not added any questions to this test yet.",
+    });
     return;
   }
 

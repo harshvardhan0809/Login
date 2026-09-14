@@ -115,23 +115,78 @@ export function fromDatetimeLocal(value) {
 }
 
 /** How a student sees a test's window on their dashboard. */
-export function scheduleLabel({ closes_at: closesAt, duration_minutes: duration }) {
+export function scheduleLabel(test) {
+  const { state, opensAt, closesAt } = testWindow(test);
   const parts = [];
 
-  if (duration) parts.push(`${formatDuration(duration)} to complete`);
-  if (closesAt) {
-    const closed = new Date(closesAt) < new Date();
+  if (test.duration_minutes) parts.push(`${formatDuration(test.duration_minutes)} to complete`);
+
+  // Before it opens, when it opens is the only date worth showing; after
+  // that, when it closes is.
+  if (state === "upcoming" && opensAt) {
+    parts.push(`Opens ${formatDateTime(opensAt)}`);
+  } else if (closesAt) {
     parts.push(
-      closed ? `Closed ${formatDateTime(closesAt)}` : `Closes ${formatDateTime(closesAt)}`
+      state === "closed"
+        ? `Closed ${formatDateTime(closesAt)}`
+        : `Closes ${formatDateTime(closesAt)}`
     );
   }
 
   return parts.join(" · ");
 }
 
+/**
+ * A countdown in the largest units that still say something useful.
+ *
+ * formatClock is right for an exam timer, where the paper is never longer
+ * than a few hours and every second matters. It is wrong for a deadline three
+ * days out, where "64:45:42" makes the reader do arithmetic to discover it
+ * means "about two and a half days".
+ */
+export function formatCountdown(ms) {
+  const total = Math.max(0, Math.ceil(ms / 1000));
+  const pad = value => String(value).padStart(2, "0");
+
+  const days = Math.floor(total / 86400);
+  const hours = Math.floor((total % 86400) / 3600);
+  const minutes = Math.floor((total % 3600) / 60);
+  const seconds = total % 60;
+
+  if (days) return `${days}d ${hours}h`;
+  if (hours) return `${hours}h ${pad(minutes)}m`;
+
+  // Inside the last hour it ticks, because now the seconds matter again.
+  return `${pad(minutes)}:${pad(seconds)}`;
+}
+
+/**
+ * Where a test is in its schedule right now.
+ *
+ * The browser's answer, used only to decide what to render. get_exam() makes
+ * the same judgement against the database clock, and that is the one that
+ * counts.
+ *
+ * @returns {{state: "upcoming"|"open"|"closed", opensAt: Date|null, closesAt: Date|null}}
+ */
+export function testWindow(test) {
+  const now = Date.now();
+  const opensAt = test?.opens_at ? new Date(test.opens_at) : null;
+  const closesAt = test?.closes_at ? new Date(test.closes_at) : null;
+
+  if (closesAt && now > closesAt.valueOf()) return { state: "closed", opensAt, closesAt };
+  if (opensAt && now < opensAt.valueOf()) return { state: "upcoming", opensAt, closesAt };
+  return { state: "open", opensAt, closesAt };
+}
+
 /** True once a test's deadline has passed. */
 export function isClosed(test) {
-  return Boolean(test?.closes_at) && new Date(test.closes_at) < new Date();
+  return testWindow(test).state === "closed";
+}
+
+/** True while a test is published but has not reached its start time. */
+export function isUpcoming(test) {
+  return testWindow(test).state === "upcoming";
 }
 
 /**

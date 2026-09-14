@@ -6,10 +6,10 @@ import {
   formatDateTime,
   formatDuration,
   fromDatetimeLocal,
-  isClosed,
   isPastDue,
   relativeTime,
   submissionDeadline,
+  testWindow,
   toDatetimeLocal,
 } from "../lib/dates.js";
 import {
@@ -19,9 +19,11 @@ import {
   removeSebConfig,
 } from "../lib/seb.js";
 import { openQuestionEditor } from "../lib/questionEditor.js";
+import { isMissingAudience, openAudienceEditor } from "../lib/audienceEditor.js";
 import { changePasswordSection } from "../lib/password.js";
 import { noticeCard, sortNotices } from "../lib/noticeBoard.js";
 import { isMissingSubmissions } from "../lib/assignmentSubmit.js";
+import { sebBadge } from "../lib/sebBadge.js";
 import {
   countLabel,
   el,
@@ -42,6 +44,7 @@ const testLink = document.getElementById("testLink");
 const testLinkField = document.getElementById("testLinkField");
 const testDuration = document.getElementById("testDuration");
 const testCloses = document.getElementById("testCloses");
+const testOpens = document.getElementById("testOpens");
 const adminTestsList = document.getElementById("adminTestsList");
 const questionEditor = document.getElementById("questionEditor");
 const adminResultsList = document.getElementById("adminResultsList");
@@ -113,7 +116,7 @@ syncKindFields();
  *   typo in its title would be blocked by a date the teacher did not touch.
  * @returns {{duration_minutes: number|null, closes_at: string|null}|null}
  */
-function readSchedule(durationInput, closesInput, current = null) {
+function readSchedule(durationInput, opensInput, closesInput, current = null) {
   const raw = durationInput.value.trim();
   let duration = null;
 
@@ -125,6 +128,7 @@ function readSchedule(durationInput, closesInput, current = null) {
     }
   }
 
+  const opensAt = fromDatetimeLocal(opensInput.value);
   const closesAt = fromDatetimeLocal(closesInput.value);
   const unchanged = closesAt === current || toDatetimeLocal(current) === closesInput.value;
 
@@ -135,7 +139,14 @@ function readSchedule(durationInput, closesInput, current = null) {
     return null;
   }
 
-  return { duration_minutes: duration, closes_at: closesAt };
+  // The database rejects this too, but a constraint violation is a poor way to
+  // learn you typed the dates the wrong way round.
+  if (opensAt && closesAt && new Date(opensAt) >= new Date(closesAt)) {
+    toast("The start time must come before the deadline.", "error");
+    return null;
+  }
+
+  return { duration_minutes: duration, opens_at: opensAt, closes_at: closesAt };
 }
 
 function readTestForm() {
@@ -154,7 +165,7 @@ function readTestForm() {
     return null;
   }
 
-  const schedule = readSchedule(testDuration, testCloses);
+  const schedule = readSchedule(testDuration, testOpens, testCloses);
   if (!schedule) return null;
 
   return {
@@ -193,6 +204,7 @@ addTestBtn.addEventListener("click", async () => {
   testSubject.value = "";
   testLink.value = "";
   testDuration.value = "";
+  testOpens.value = "";
   testCloses.value = "";
   testRequiresSeb.checked = true;
   testKind.value = "builtin";
@@ -318,6 +330,10 @@ function editForm(test, onDone) {
     value: test.duration_minutes ?? "",
     placeholder: "No limit",
   });
+  const opensInput = el("input", {
+    type: "datetime-local",
+    value: toDatetimeLocal(test.opens_at),
+  });
   const closesInput = el("input", {
     type: "datetime-local",
     value: toDatetimeLocal(test.closes_at),
@@ -353,7 +369,7 @@ function editForm(test, onDone) {
       return;
     }
 
-    const schedule = readSchedule(durationInput, closesInput, test.closes_at);
+    const schedule = readSchedule(durationInput, opensInput, closesInput, test.closes_at);
     if (!schedule) return;
 
     const updated = {
@@ -411,6 +427,7 @@ function editForm(test, onDone) {
       labelled("Questions", kindSelect),
       linkField,
       labelled("Maximum time (minutes)", durationInput, "Blank means no time limit."),
+      labelled("Start time", opensInput, "Blank means available as soon as it is published."),
       labelled("Deadline", closesInput, "Blank means no deadline."),
       el("label", { className: "checkbox-field" }, [
         sebInput,
@@ -421,10 +438,16 @@ function editForm(test, onDone) {
   ]);
 }
 
-/** Draft / Live / Closed, as a coloured pill next to the title. */
+/** Draft / Scheduled / Live / Closed, as a coloured pill next to the title. */
 function statusPill(test) {
   if (test.status !== "published") return { text: "Draft", tone: "draft" };
-  if (isClosed(test)) return { text: "Closed", tone: "closed" };
+
+  const { state } = testWindow(test);
+  if (state === "closed") return { text: "Closed", tone: "closed" };
+  // Published but waiting for its start time — visible to students, not yet
+  // openable, which is neither "Draft" nor "Live".
+  if (state === "upcoming") return { text: "Scheduled", tone: "scheduled" };
+
   return { text: "Live", tone: "live" };
 }
 
@@ -441,8 +464,20 @@ function testDetails(test) {
 
   const timing = [];
   if (test.duration_minutes) timing.push(formatDuration(test.duration_minutes));
+  if (test.opens_at) timing.push(`opens ${formatDateTime(test.opens_at)}`);
   if (test.closes_at) timing.push(`closes ${formatDateTime(test.closes_at)}`);
-  lines.push(timing.length ? timing.join(" · ") : "No time limit or deadline");
+  lines.push(timing.length ? timing.join(" · ") : "No time limit or schedule");
+
+  if (test.audience === "selected") {
+    const count = audienceCounts.get(test.id) ?? 0;
+    lines.push(
+      count
+        ? `Limited to ${countLabel(count, "student")}`
+        : "Limited — but nobody is selected, so no one can see it"
+    );
+  } else {
+    lines.push("Available to everyone");
+  }
 
   if (test.requires_seb === false) {
     lines.push("Opens in any browser");
@@ -492,7 +527,19 @@ function testCard(test) {
     actions.push(questionsBtn);
   }
 
-  actions.push(editBtn, statusBtn);
+  const audienceBtn = el("button", { type: "button", className: "edit-btn", text: "Audience" });
+  audienceBtn.addEventListener("click", () => {
+    adminTestsList.hidden = true;
+    questionEditor.hidden = false;
+    openAudienceEditor(questionEditor, test, () => {
+      questionEditor.hidden = true;
+      questionEditor.replaceChildren();
+      adminTestsList.hidden = false;
+      loadTests();
+    });
+  });
+
+  actions.push(audienceBtn, editBtn, statusBtn);
 
   if (test.requires_seb !== false) {
     // Rebuilds and re-hosts the .seb file. Needed whenever something the
@@ -573,9 +620,21 @@ function testCard(test) {
   return card;
 }
 
-function resultCard(result, title) {
+function resultCard(result, test) {
+  const seb = sebBadge({
+    requiresSeb: test?.requires_seb,
+    viaSeb: result.via_seb,
+    sebApi: result.seb_api,
+  });
+
   return el("article", { className: "result-card" }, [
-    el("div", {}, [el("h4", { text: title || "Test" }), el("p", { text: result.email })]),
+    el("div", {}, [
+      el("div", { className: "test-title-row" }, [
+        el("h4", { text: test?.title || "Test" }),
+        ...(seb ? [seb] : []),
+      ]),
+      el("p", { text: result.email }),
+    ]),
     el("div", {
       className: "score-badge",
       text: `${result.score}/${result.total} (${result.percentage}%)`,
@@ -589,13 +648,17 @@ const questionCounts = new Map();
 /** Quit passwords, admin-only, shown on the card so a teacher can read one out. */
 const quitPasswords = new Map();
 
+/** How many students each limited test is assigned to. */
+const audienceCounts = new Map();
+
 async function loadTests() {
   setNotice(adminTestsList, "Loading tests...");
 
-  const [tests, counts, secrets] = await Promise.all([
+  const [tests, counts, secrets, audience] = await Promise.all([
     supabase.from("tests").select("*").order("created_at", { ascending: false }),
     supabase.from("questions").select("test_id"),
     supabase.from("test_secrets").select("test_id, quit_password"),
+    supabase.from("test_audience").select("test_id"),
   ]);
 
   if (tests.error) {
@@ -615,6 +678,15 @@ async function loadTests() {
   quitPasswords.clear();
   for (const row of secrets.data ?? []) quitPasswords.set(row.test_id, row.quit_password);
 
+  // Absent until 0014; a test with no rows simply reads as "nobody selected".
+  audienceCounts.clear();
+  if (audience.error && !isMissingAudience(audience.error)) {
+    console.error("Could not load test audiences:", audience.error.message);
+  }
+  for (const row of audience.data ?? []) {
+    audienceCounts.set(row.test_id, (audienceCounts.get(row.test_id) ?? 0) + 1);
+  }
+
   const rows = tests.data ?? [];
   adminTestsCount.textContent = countLabel(rows.length, "test");
   renderList(adminTestsList, rows, testCard, "No tests have been created yet.");
@@ -630,9 +702,9 @@ async function loadResults() {
   const [results, tests] = await Promise.all([
     supabase
       .from("results")
-      .select("test_id, email, score, total, percentage, attempted_at")
+      .select("test_id, email, score, total, percentage, attempted_at, via_seb, seb_api")
       .order("attempted_at", { ascending: false }),
-    supabase.from("tests").select("id, title"),
+    supabase.from("tests").select("id, title, requires_seb"),
   ]);
 
   if (results.error) {
@@ -645,14 +717,14 @@ async function loadResults() {
     console.error("Error loading test titles:", tests.error.message);
   }
 
-  const titlesById = new Map((tests.data ?? []).map(test => [test.id, test.title]));
+  const testsById = new Map((tests.data ?? []).map(test => [test.id, test]));
   const rows = results.data ?? [];
 
   adminResultsCount.textContent = countLabel(rows.length, "result");
   renderList(
     adminResultsList,
     rows,
-    result => resultCard(result, titlesById.get(result.test_id)),
+    result => resultCard(result, testsById.get(result.test_id)),
     "No results yet."
   );
 }

@@ -328,8 +328,16 @@ button,
     opacity var(--fast);
 }
 
+/*
+ * Buttons size to their label.
+ *
+ * This used to default to 100%, which is right for the one action a card
+ * owns and wrong everywhere else — any button dropped into a row of controls
+ * silently blew out to full width and pushed its neighbours out of the
+ * container. Full width is now opt-in, below.
+ */
 button {
-  width: 100%;
+  width: auto;
   padding: 12px 18px;
   color: var(--brand-ink);
   background: linear-gradient(180deg, #7df0dd, var(--brand) 55%, #34d6bd);
@@ -353,6 +361,14 @@ button:disabled {
   cursor: not-allowed;
   opacity: 0.55;
   transform: none;
+}
+
+/* A button that is a direct child of a card is that card's own action — the
+   sign-in button, the logout rail — and spans it. `.block` covers the same
+   idea where markup nesting puts a button one level deeper. */
+.card > button,
+.block {
+  width: 100%;
 }
 
 button.secondary,
@@ -428,6 +444,7 @@ button.secondary:hover:not(:disabled),
 
 .start-btn {
   flex: none;
+  width: auto;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -451,11 +468,27 @@ button.secondary:hover:not(:disabled),
   margin-top: 20px;
 }
 
+.actions button {
+  flex: 1 1 auto;
+}
+
 .admin-actions {
   display: flex;
   flex-wrap: wrap;
   gap: 7px;
   align-items: center;
+}
+
+/* Belt and braces: whatever variant a button in one of these rows carries, it
+   sizes to its label. This is the rule that was missing when Unpublish, a
+   .secondary, stretched across the whole row. */
+.admin-actions button,
+.admin-actions .start-btn,
+.exam-alert button,
+.submission-status button,
+.assignment-side button,
+.header-actions button {
+  width: auto;
 }
 
 /* --- fields -------------------------------------------------------------- */
@@ -2404,4 +2437,354 @@ input[type="radio"] {
 /* A hand-in past its deadline is read-only, and should look it. */
 .submission-closed .submission-status {
   opacity: 0.75;
+}
+
+/* --- reveal on scroll ---------------------------------------------------- */
+
+/*
+ * Applied by src/lib/reveal.js, never by the markup — if that module fails to
+ * load, nothing is hidden and the page simply renders.
+ */
+.reveal {
+  opacity: 0;
+  transform: translateY(14px);
+  transition:
+    opacity 520ms var(--ease) var(--reveal-delay, 0ms),
+    transform 520ms var(--ease) var(--reveal-delay, 0ms);
+  will-change: opacity, transform;
+}
+
+.reveal-in {
+  opacity: 1;
+  transform: none;
+  will-change: auto;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .reveal {
+    opacity: 1;
+    transform: none;
+    transition: none;
+  }
+}
+
+/* --- scheduled (published, not yet open) --------------------------------- */
+
+.pill-scheduled {
+  background: rgba(56, 189, 248, 0.16);
+  color: var(--brand-2);
+}
+
+.exam-alert-upcoming {
+  border-color: rgba(56, 189, 248, 0.32);
+  background:
+    radial-gradient(30rem 12rem at 8% 0%, rgba(56, 189, 248, 0.15), transparent 70%),
+    var(--surface-2);
+}
+
+.exam-alert-upcoming .exam-alert-eyebrow {
+  color: var(--brand-2);
+}
+
+/* A test that has not opened is waiting, not urgent — the dot holds steady. */
+.exam-alert-upcoming .exam-alert-dot {
+  animation: none;
+}
+
+.test-card-upcoming {
+  opacity: 0.9;
+}
+
+/* A Start button before the start time: visibly inert rather than missing, so
+   the student can see the action exists and is simply not available yet. */
+.start-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+  transform: none;
+  box-shadow: none;
+}
+
+/* --- user management ----------------------------------------------------- */
+
+/* Rows in this table open a record, so they have to look pressable. */
+.data-table-rows tbody tr {
+  cursor: pointer;
+}
+
+.data-table-rows tbody tr:hover td {
+  background: var(--surface-3);
+}
+
+.row-selected td {
+  background: rgba(94, 234, 212, 0.08) !important;
+  box-shadow: inset 2px 0 0 var(--brand);
+}
+
+.user-detail {
+  margin-top: 26px;
+  padding: 22px 24px 24px;
+  border: 1px solid rgba(94, 234, 212, 0.22);
+  border-radius: var(--r-lg);
+  background:
+    radial-gradient(30rem 12rem at 6% 0%, rgba(94, 234, 212, 0.09), transparent 70%),
+    var(--surface-2);
+}
+
+.user-detail .section-title:first-child {
+  margin-bottom: 18px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--line);
+}
+
+.user-detail .section-title h2 {
+  font-size: 1.05rem;
+  word-break: break-all;
+}
+
+.record-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+  padding: 13px 16px;
+  margin-bottom: 9px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: rgba(9, 13, 24, 0.4);
+  transition: border-color var(--fast);
+}
+
+.record-row:hover {
+  border-color: var(--line-strong);
+}
+
+.record-main {
+  flex: 1 1 240px;
+  min-width: 0;
+}
+
+.record-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 4px;
+  color: var(--faint);
+  font-size: 0.79rem;
+}
+
+.record-meta .dot {
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: var(--faint);
+  flex: none;
+}
+
+/* Who changed a mark, and why — shown wherever the mark is. */
+.adjusted-note {
+  color: var(--accent);
+}
+
+.score-form {
+  margin-bottom: 16px;
+  border-color: rgba(94, 234, 212, 0.28);
+}
+
+.score-form .form-stack {
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+}
+
+.score-form .submission-actions {
+  margin-top: 16px;
+}
+
+@media (max-width: 720px) {
+  .user-detail {
+    padding: 18px 14px 20px;
+  }
+
+  .record-row {
+    align-items: stretch;
+  }
+}
+
+/* --- dead-end state panel ------------------------------------------------ */
+
+/*
+ * Shown when a student opens a test they cannot take — already submitted, past
+ * its deadline, withdrawn. This carries real weight rather than being a line
+ * of grey text, because it is the whole answer to "why can I not start this?"
+ * and the student has usually just walked past a Start button to reach it.
+ */
+.state-panel {
+  max-width: 32rem;
+  margin: 8px auto;
+  padding: 36px 32px 32px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-lg);
+  background: var(--surface-2);
+  text-align: center;
+}
+
+.state-icon {
+  display: grid;
+  place-items: center;
+  width: 62px;
+  height: 62px;
+  margin: 0 auto 18px;
+  border-radius: 50%;
+  border: 1px solid var(--line-strong);
+  background: rgba(9, 13, 24, 0.5);
+  font-size: 1.6rem;
+  line-height: 1;
+}
+
+.state-title {
+  margin-bottom: 10px;
+  font-size: 1.35rem;
+}
+
+.state-message {
+  color: var(--text-soft);
+  font-size: 0.95rem;
+  line-height: 1.62;
+}
+
+/* The nudge that matters: the list they came from is probably stale. */
+.state-hint {
+  margin-top: 18px;
+  padding: 13px 16px;
+  border: 1px dashed var(--line-strong);
+  border-radius: var(--r-sm);
+  background: rgba(9, 13, 24, 0.4);
+  color: var(--muted);
+  font-size: 0.85rem;
+  line-height: 1.6;
+}
+
+.state-panel button {
+  margin-top: 16px;
+}
+
+.state-panel .close-countdown {
+  justify-content: center;
+  margin-top: 24px;
+}
+
+/* Tones. "done" is a completed test, which is good news and should not be
+   dressed in the same red as a missed deadline. */
+.state-panel-error {
+  border-color: rgba(251, 113, 133, 0.3);
+  background:
+    radial-gradient(24rem 13rem at 50% 0%, rgba(251, 113, 133, 0.12), transparent 70%),
+    var(--surface-2);
+}
+
+.state-panel-error .state-icon {
+  border-color: rgba(251, 113, 133, 0.4);
+  color: var(--danger);
+}
+
+.state-panel-done {
+  border-color: rgba(52, 211, 153, 0.32);
+  background:
+    radial-gradient(24rem 13rem at 50% 0%, rgba(52, 211, 153, 0.13), transparent 70%),
+    var(--surface-2);
+}
+
+.state-panel-done .state-icon {
+  border-color: rgba(52, 211, 153, 0.45);
+  color: var(--success);
+}
+
+.state-panel-info {
+  border-color: rgba(56, 189, 248, 0.3);
+  background:
+    radial-gradient(24rem 13rem at 50% 0%, rgba(56, 189, 248, 0.12), transparent 70%),
+    var(--surface-2);
+}
+
+.state-panel-info .state-icon {
+  border-color: rgba(56, 189, 248, 0.42);
+  color: var(--brand-2);
+}
+
+@media (max-width: 720px) {
+  .state-panel {
+    padding: 28px 20px 24px;
+  }
+}
+
+/* --- test audience ------------------------------------------------------- */
+
+.audience-picker {
+  margin-top: 16px;
+}
+
+.audience-toolbar {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.audience-toolbar input[type="search"] {
+  flex: 1 1 auto;
+}
+
+.audience-toolbar button {
+  flex: none;
+}
+
+/* A class of thirty scrolls inside the panel rather than pushing Save off the
+   bottom of the page. */
+.audience-list {
+  max-height: 21rem;
+  overflow-y: auto;
+  display: grid;
+  gap: 5px;
+  padding: 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: rgba(9, 13, 24, 0.4);
+}
+
+.audience-row {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 9px 12px;
+  border: 1px solid transparent;
+  border-radius: var(--r-sm);
+  cursor: pointer;
+  font-size: 0.88rem;
+  transition:
+    background var(--fast),
+    border-color var(--fast);
+}
+
+.audience-row:hover {
+  background: var(--surface-3);
+}
+
+.audience-row:has(input:checked) {
+  border-color: rgba(94, 234, 212, 0.35);
+  background: rgba(94, 234, 212, 0.08);
+}
+
+.audience-email {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 720px) {
+  .audience-toolbar {
+    flex-wrap: wrap;
+  }
+
+  .audience-toolbar input[type="search"] {
+    flex: 1 1 100%;
+  }
 }
