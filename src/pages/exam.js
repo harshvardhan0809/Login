@@ -1,5 +1,5 @@
 import { supabase } from "../lib/supabase.js";
-import { requireUser } from "../lib/session.js";
+import { displayName, requireUser } from "../lib/session.js";
 import { el, errorMessage, setBusy, setNotice, toast } from "../lib/ui.js";
 import { formatClock, formatCountdown, formatDateTime, formatDuration } from "../lib/dates.js";
 import { isRunningInSeb, sebQuitUrl } from "../lib/seb.js";
@@ -10,15 +10,31 @@ import { mathText, setMathText } from "../lib/math.js";
 const subjectEl = document.getElementById("examSubject");
 const titleEl = document.getElementById("examTitle");
 const metaEl = document.getElementById("examMeta");
+const candidateEl = document.getElementById("candidate");
 const stateEl = document.getElementById("examState");
 const formEl = document.getElementById("examForm");
-const listEl = document.getElementById("questionList");
-const answeredEl = document.getElementById("answeredCount");
-const submitBtn = document.getElementById("submitBtn");
 const resultEl = document.getElementById("examResult");
 const backBtn = document.getElementById("backBtn");
 const clockEl = document.getElementById("examClock");
 const clockValueEl = document.getElementById("examClockValue");
+const warningEl = document.getElementById("timeWarning");
+
+const qNumberEl = document.getElementById("qNumber");
+const qTypeEl = document.getElementById("qType");
+const qMarksEl = document.getElementById("qMarks");
+const qBodyEl = document.getElementById("qBody");
+const paletteEl = document.getElementById("palette");
+const paletteGridEl = document.getElementById("paletteGrid");
+const legendEl = document.getElementById("legend");
+const paletteToggle = document.getElementById("paletteToggle");
+const paletteClose = document.getElementById("paletteClose");
+const paletteScrim = document.getElementById("paletteScrim");
+
+const saveNextBtn = document.getElementById("saveNextBtn");
+const markBtn = document.getElementById("markBtn");
+const clearBtn = document.getElementById("clearBtn");
+const prevBtn = document.getElementById("prevBtn");
+const submitBtn = document.getElementById("submitBtn");
 
 /** Seconds SEB stays open after a submission, so the student sees their score. */
 const CLOSE_DELAY_SECONDS = 5;
@@ -31,16 +47,52 @@ const CLOSE_DELAY_SECONDS = 5;
  */
 const SEB_WAIT_LIMIT_MS = 2 * 60 * 1000;
 
+/** Time-left marks at which the student is warned, loudest last. */
+const WARNINGS = [
+  { ms: 10 * 60000, text: "10 minutes left." },
+  { ms: 5 * 60000, text: "5 minutes left." },
+  { ms: 60000, text: "1 minute left. The test will be submitted automatically at 00:00." },
+];
+
+const TYPE_LABELS = {
+  single: "Single correct",
+  multiple: "Multiple correct",
+  numerical: "Numerical value",
+  text: "Short answer",
+};
+
+/**
+ * Palette states, in legend order.
+ *
+ * The colours follow the convention students already know from computer-based
+ * exams, so nobody has to learn what a green square means on the day.
+ */
+const STATUSES = [
+  { key: "answered", label: "Answered" },
+  { key: "not-answered", label: "Not Answered" },
+  { key: "not-visited", label: "Not Visited" },
+  { key: "marked", label: "Marked for Review" },
+  { key: "answered-marked", label: "Answered & Marked for Review (will be evaluated)" },
+];
+
 backBtn.addEventListener("click", () => location.replace("dashboard.html"));
 
-await requireUser();
+const user = await requireUser();
+candidateEl.textContent = displayName(user);
 
 const testId = new URLSearchParams(location.search).get("test");
 
-/** Answers keyed by question id: string[] for choices, string for free text. */
+/** Where an unfinished paper is kept, so a reload or crash loses nothing. */
+const STORAGE_KEY = `cbt:${testId}:${user.id}`;
+
+/** Answers keyed by question id: string[] for choices, string for typed ones. */
 const answers = new Map();
+const visited = new Set();
+const marked = new Set();
 let questions = [];
+let current = 0;
 let submitted = false;
+let preview = false;
 let timerId = null;
 
 /**
@@ -51,13 +103,354 @@ let timerId = null;
  * gains nothing. null means the test is untimed.
  */
 let endsAtMs = null;
+const warned = new Set();
 
-function stopTimer() {
-  if (timerId !== null) {
-    clearInterval(timerId);
-    timerId = null;
+/** Closes the submit confirmation if it is open; set while it is. */
+let closeConfirm = null;
+
+// --- saving progress locally ----------------------------------------------
+
+/**
+ * Keeps the paper in this browser until it is submitted.
+ *
+ * SEB can crash and laptops run out of battery; the server keeps the clock
+ * running regardless, so reopening the test must bring the answers back too.
+ * Storage can be unavailable (private windows, locked-down profiles), in which
+ * case the paper simply works without it.
+ */
+function persist() {
+  if (preview) return;
+  try {
+    localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({
+        answers: Object.fromEntries(answers),
+        visited: [...visited],
+        marked: [...marked],
+        current,
+      })
+    );
+  } catch {
+    // Not fatal: the answers are still on screen.
   }
 }
+
+function restore() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? "null");
+    if (!saved) return;
+
+    // Only ids that are still on the paper: a question deleted since must not
+    // be sent back as an answer.
+    const ids = new Set(questions.map(question => question.id));
+    for (const [id, value] of Object.entries(saved.answers ?? {})) {
+      if (ids.has(id)) answers.set(id, value);
+    }
+    for (const id of saved.visited ?? []) if (ids.has(id)) visited.add(id);
+    for (const id of saved.marked ?? []) if (ids.has(id)) marked.add(id);
+
+    const index = Number(saved.current);
+    if (Number.isInteger(index) && index >= 0 && index < questions.length) current = index;
+  } catch {
+    // Corrupt or unavailable storage: start clean.
+  }
+}
+
+function forget() {
+  try {
+    localStorage.removeItem(STORAGE_KEY);
+  } catch {
+    // Nothing to clean up.
+  }
+}
+
+// --- question state -------------------------------------------------------
+
+function hasAnswer(question) {
+  const value = answers.get(question.id);
+  return Array.isArray(value) ? value.length > 0 : Boolean(String(value ?? "").trim());
+}
+
+function statusOf(question) {
+  const answered = hasAnswer(question);
+  if (marked.has(question.id)) return answered ? "answered-marked" : "marked";
+  if (answered) return "answered";
+  return visited.has(question.id) ? "not-answered" : "not-visited";
+}
+
+function statusCounts() {
+  const counts = Object.fromEntries(STATUSES.map(status => [status.key, 0]));
+  for (const question of questions) counts[statusOf(question)] += 1;
+  return counts;
+}
+
+// --- palette --------------------------------------------------------------
+
+function swatch(key, count) {
+  return el("span", { className: `cbt-swatch st-${key}`, text: String(count) });
+}
+
+function renderLegend() {
+  const counts = statusCounts();
+  legendEl.replaceChildren(
+    ...STATUSES.map(status =>
+      el("li", { className: "cbt-legend-item" }, [
+        swatch(status.key, counts[status.key]),
+        el("span", { text: status.label }),
+      ])
+    )
+  );
+}
+
+function renderPalette() {
+  paletteGridEl.replaceChildren(
+    ...questions.map((question, index) => {
+      const status = statusOf(question);
+      const label = STATUSES.find(item => item.key === status).label;
+      const button = el("button", {
+        type: "button",
+        className: `cbt-cell st-${status}${index === current ? " is-current" : ""}`,
+        text: String(index + 1),
+        title: `Question ${index + 1}: ${label}`,
+      });
+      button.setAttribute("role", "listitem");
+      button.setAttribute("aria-label", `Question ${index + 1}, ${label}`);
+      if (index === current) button.setAttribute("aria-current", "true");
+
+      button.addEventListener("click", () => {
+        goTo(index);
+        setPaletteOpen(false);
+      });
+      return button;
+    })
+  );
+  renderLegend();
+}
+
+/** On narrow screens the palette is a drawer; on wide ones it is always shown. */
+function setPaletteOpen(open) {
+  paletteEl.classList.toggle("is-open", open);
+  paletteScrim.hidden = !open;
+  paletteToggle.setAttribute("aria-expanded", String(open));
+}
+
+paletteToggle.addEventListener("click", () =>
+  setPaletteOpen(!paletteEl.classList.contains("is-open"))
+);
+paletteClose.addEventListener("click", () => setPaletteOpen(false));
+paletteScrim.addEventListener("click", () => setPaletteOpen(false));
+
+// --- the current question -------------------------------------------------
+
+function recordAnswer(question, value) {
+  if (Array.isArray(value) ? value.length : String(value).trim()) {
+    answers.set(question.id, value);
+  } else {
+    answers.delete(question.id);
+  }
+  persist();
+  renderPalette();
+}
+
+const LETTERS = "ABCDEFGHIJ";
+
+function choiceList(question) {
+  const multiple = question.type === "multiple";
+  const options = Array.isArray(question.options) ? question.options : [];
+  const chosen = new Set(answers.get(question.id) ?? []);
+
+  const list = el("div", { className: "cbt-options" });
+  list.setAttribute("role", multiple ? "group" : "radiogroup");
+
+  options.forEach((option, index) => {
+    const input = el("input", {
+      type: multiple ? "checkbox" : "radio",
+      name: `q-${question.id}`,
+      value: option.id,
+      checked: chosen.has(option.id),
+      className: "cbt-option-input",
+    });
+
+    input.addEventListener("change", () => {
+      if (multiple) {
+        const next = new Set(answers.get(question.id) ?? []);
+        input.checked ? next.add(option.id) : next.delete(option.id);
+        recordAnswer(question, [...next]);
+      } else {
+        // One option only: a radio group cannot hold two.
+        recordAnswer(question, [option.id]);
+      }
+    });
+
+    list.append(
+      el("label", { className: "cbt-option" }, [
+        input,
+        el("span", { className: "cbt-option-letter", text: LETTERS[index] ?? String(index + 1) }),
+        setMathText(el("span", { className: "cbt-option-text" }), option.text),
+      ])
+    );
+  });
+
+  return list;
+}
+
+/** Keeps a numerical answer to what can be graded: digits, one point, a leading sign. */
+function cleanNumber(raw) {
+  let text = raw.replace(/[^0-9.+-]/g, "");
+  const sign = /^[+-]/.test(text) ? text[0] : "";
+  text = text.replace(/[+-]/g, "");
+  const dot = text.indexOf(".");
+  if (dot !== -1) text = text.slice(0, dot + 1) + text.slice(dot + 1).replace(/\./g, "");
+  return (sign + text).slice(0, 20);
+}
+
+/**
+ * The numerical answer box, with an on-screen keypad.
+ *
+ * The keypad is there for tablets, where Safe Exam Browser may not raise a
+ * numeric keyboard; the box still takes typing on a laptop.
+ */
+function numericalInput(question) {
+  const input = el("input", {
+    type: "text",
+    inputMode: "decimal",
+    autocomplete: "off",
+    spellcheck: false,
+    className: "cbt-answer-box",
+    placeholder: "Enter your answer",
+    value: answers.get(question.id) ?? "",
+  });
+  input.setAttribute("aria-label", "Numerical answer");
+
+  const commit = () => {
+    const cleaned = cleanNumber(input.value);
+    if (cleaned !== input.value) input.value = cleaned;
+    recordAnswer(question, cleaned);
+  };
+  input.addEventListener("input", commit);
+
+  const press = key => {
+    if (key === "-") {
+      input.value = input.value.startsWith("-") ? input.value.slice(1) : `-${input.value}`;
+    } else if (key === "⌫") {
+      input.value = input.value.slice(0, -1);
+    } else {
+      input.value += key;
+    }
+    commit();
+  };
+
+  const keys = ["7", "8", "9", "4", "5", "6", "1", "2", "3", "0", ".", "-", "⌫"];
+  const pad = el(
+    "div",
+    { className: "cbt-keypad" },
+    keys.map(key => {
+      const button = el("button", {
+        type: "button",
+        className: key === "⌫" ? "cbt-key cbt-key-wide" : "cbt-key",
+        text: key === "⌫" ? "Backspace" : key === "-" ? "− / +" : key,
+      });
+      button.addEventListener("click", () => press(key));
+      return button;
+    })
+  );
+
+  return el("div", { className: "cbt-numeric" }, [
+    el("p", { className: "cbt-numeric-label", text: "Your answer (numerical value)" }),
+    input,
+    pad,
+  ]);
+}
+
+function textInput(question) {
+  const input = el("input", {
+    type: "text",
+    autocomplete: "off",
+    className: "cbt-answer-box",
+    placeholder: "Type your answer",
+    value: answers.get(question.id) ?? "",
+  });
+  input.setAttribute("aria-label", "Your answer");
+  input.addEventListener("input", () => recordAnswer(question, input.value));
+  return input;
+}
+
+function renderQuestion() {
+  const question = questions[current];
+  if (!question) return;
+
+  visited.add(question.id);
+
+  const points = Number(question.points) || 1;
+  qNumberEl.textContent = `Question ${current + 1} of ${questions.length}`;
+  qTypeEl.textContent = TYPE_LABELS[question.type] ?? "Question";
+  qMarksEl.textContent = `${points} ${points === 1 ? "mark" : "marks"}`;
+
+  const body = [
+    el("p", { className: "cbt-qlabel", text: `Question ${current + 1}` }),
+    // Stored as LaTeX source; students see it typeset.
+    mathText("div", { className: "cbt-prompt" }, question.prompt),
+  ];
+
+  if (question.type === "numerical") body.push(numericalInput(question));
+  else if (question.type === "text") body.push(textInput(question));
+  else {
+    body.push(choiceList(question));
+    if (question.type === "multiple") {
+      body.push(el("p", { className: "cbt-hint", text: "One or more options may be correct." }));
+    }
+  }
+
+  qBodyEl.replaceChildren(...body);
+
+  prevBtn.disabled = current === 0;
+  const last = current === questions.length - 1;
+  saveNextBtn.textContent = last ? "Save" : "Save & Next";
+  markBtn.textContent = last ? "Mark for Review" : "Mark for Review & Next";
+
+  persist();
+  renderPalette();
+
+  // On a phone the page scrolls; bring the new question's top into view.
+  if (qNumberEl.getBoundingClientRect().top < 0) qNumberEl.scrollIntoView({ block: "start" });
+}
+
+function goTo(index) {
+  if (index < 0 || index >= questions.length) return;
+  current = index;
+  renderQuestion();
+}
+
+function next() {
+  if (current < questions.length - 1) {
+    goTo(current + 1);
+  } else {
+    renderQuestion();
+    toast("That was the last question. Review from the palette, or submit when you are ready.");
+  }
+}
+
+// Answers are recorded as they are chosen, so nothing is lost if the timer
+// runs out between choosing and pressing a button. The buttons decide the
+// review mark and where to go next.
+saveNextBtn.addEventListener("click", () => {
+  marked.delete(questions[current].id);
+  next();
+});
+
+markBtn.addEventListener("click", () => {
+  marked.add(questions[current].id);
+  next();
+});
+
+clearBtn.addEventListener("click", () => {
+  answers.delete(questions[current].id);
+  renderQuestion();
+});
+
+prevBtn.addEventListener("click", () => goTo(current - 1));
+
+// --- leaving and closing --------------------------------------------------
 
 /**
  * Inside SEB, close the browser after a short, visible countdown.
@@ -65,18 +458,12 @@ function stopTimer() {
  * Navigating to the config's quitURL is what actually quits SEB; the delay
  * only exists so the student can read the screen first. Outside SEB there is
  * nothing to close, so the Back button stands in for it.
- *
- * The countdown is shown, not just waited out. A locked-down browser closing
- * itself with no warning reads as a crash — which is exactly the wrong thing
- * to feel in the ten seconds after finishing an exam.
  */
 function closeSeb(container) {
   if (!isRunningInSeb()) return;
 
   const count = el("span", { className: "close-count", text: String(CLOSE_DELAY_SECONDS) });
 
-  // An SVG ring rather than a bar: it reads as a timer at a glance and needs
-  // no width to be legible next to the number it wraps.
   const svgNS = "http://www.w3.org/2000/svg";
   const track = document.createElementNS(svgNS, "circle");
   const sweep = document.createElementNS(svgNS, "circle");
@@ -106,8 +493,6 @@ function closeSeb(container) {
   const endsAt = performance.now() + CLOSE_DELAY_SECONDS * 1000;
   let frame = null;
 
-  // Driven by animation frames, not a 1s interval: the ring drains smoothly
-  // while the number still steps 5, 4, 3, 2, 1.
   const tick = () => {
     const left = endsAt - performance.now();
 
@@ -128,90 +513,33 @@ function closeSeb(container) {
   frame = requestAnimationFrame(tick);
 }
 
-function updateAnsweredCount() {
-  const done = questions.filter(question => {
-    const value = answers.get(question.id);
-    return Array.isArray(value) ? value.length > 0 : Boolean(value?.trim());
-  }).length;
-
-  answeredEl.textContent = `${done} of ${questions.length} answered`;
-  answeredEl.className = done === questions.length ? "sub answered-all" : "sub";
+/** Warns before the tab is closed or reloaded mid-exam. */
+function guardUnload(event) {
+  if (submitted || preview) return;
+  event.preventDefault();
+  event.returnValue = "";
 }
 
-function choiceInput(question, option) {
-  // Radios for one answer, checkboxes for several — the control itself tells
-  // the student how many they may pick.
-  const multiple = question.type === "multiple";
-  const input = el("input", {
-    type: multiple ? "checkbox" : "radio",
-    name: `q-${question.id}`,
-    value: option.id,
-  });
-
-  input.addEventListener("change", () => {
-    if (multiple) {
-      const chosen = new Set(answers.get(question.id) ?? []);
-      input.checked ? chosen.add(option.id) : chosen.delete(option.id);
-      answers.set(question.id, [...chosen]);
-    } else {
-      answers.set(question.id, [option.id]);
-    }
-    updateAnsweredCount();
-  });
-
-  return el("label", { className: "choice" }, [input, setMathText(el("span"), option.text)]);
-}
-
-function questionCard(question, index) {
-  const points = Number(question.points) || 1;
-
-  const header = el("div", { className: "question-head" }, [
-    el("span", { className: "question-number", text: `Q${index + 1}` }),
-    // The prompt is stored as LaTeX source; students see it typeset.
-    mathText("p", { className: "question-prompt" }, question.prompt),
-    el("span", {
-      className: "question-points",
-      text: `${points} ${points === 1 ? "mark" : "marks"}`,
-    }),
-  ]);
-
-  let body;
-  if (question.type === "text") {
-    const input = el("input", { type: "text", placeholder: "Your answer" });
-    input.addEventListener("input", () => {
-      answers.set(question.id, input.value);
-      updateAnsweredCount();
-    });
-    body = el("div", { className: "question-body" }, [input]);
-  } else {
-    const options = Array.isArray(question.options) ? question.options : [];
-    body = el(
-      "div",
-      { className: "question-body" },
-      options.map(option => choiceInput(question, option))
-    );
-
-    if (question.type === "multiple") {
-      body.append(el("small", { className: "hint", text: "Select all that apply." }));
-    }
-  }
-
-  return el("article", { className: "question-card" }, [header, body]);
+function endPaper() {
+  formEl.hidden = true;
+  warningEl.hidden = true;
+  setPaletteOpen(false);
+  window.removeEventListener("beforeunload", guardUnload);
 }
 
 function showResult({ score, total, percentage }) {
-  formEl.hidden = true;
+  endPaper();
   resultEl.hidden = false;
+  clockEl.hidden = true;
+  backBtn.hidden = false;
 
-  const passed = Number(percentage) >= 40;
-
-  const panel = el("div", { className: `result-panel ${passed ? "result-pass" : "result-fail"}` }, [
-    el("p", { className: "result-eyebrow", text: "Submitted" }),
+  const panel = el("div", { className: "result-panel" }, [
+    el("p", { className: "result-eyebrow", text: "Test submitted" }),
     el("p", { className: "result-score", text: `${score} / ${total}` }),
     el("p", { className: "result-percent", text: `${percentage}%` }),
     el("p", {
       className: "sub",
-      text: "Your teacher can see this result now. It is also on your dashboard.",
+      text: "Your responses have been recorded. This result is also on your dashboard.",
     }),
   ]);
 
@@ -224,18 +552,12 @@ function showResult({ score, total, percentage }) {
  * Ends the page on a message the student cannot act on.
  *
  * Inside Safe Exam Browser this MUST also close the browser. Quitting is
- * password-protected — that is the entire point of the lockdown — so a student
- * who reaches a dead end with no way out is genuinely stuck until a teacher
- * walks over and types the password. Relaunching a test they have already
- * submitted is the easiest way to land here, but every other dead end (no
- * questions, deadline passed, test deleted) traps them just the same.
- *
- * The quit URL is the only exit, so every terminal state routes through here.
+ * password-protected, so a student who reaches a dead end with no way out is
+ * genuinely stuck until a teacher walks over and types the password. The quit
+ * URL is the only exit, so every terminal state routes through here.
  */
 function deadEnd({ title, message, tone = "error", icon = "!", note, action }) {
-  formEl.hidden = true;
-  // The page's own Back button would be a second, quieter copy of the action
-  // this panel already offers.
+  endPaper();
   backBtn.hidden = true;
 
   const panel = el("div", { className: `state-panel state-panel-${tone}` }, [
@@ -247,11 +569,8 @@ function deadEnd({ title, message, tone = "error", icon = "!", note, action }) {
   if (note) panel.append(el("small", { className: "hint", text: note }));
 
   if (isRunningInSeb()) {
-    // No dashboard to send them to from inside the lockdown — the only useful
-    // action is leaving, which closeSeb() does on a visible countdown.
     closeSeb(panel);
   } else if (action) {
-    // Some dead ends have a better way forward than the dashboard.
     const actionBtn = el("button", { type: "button", className: "block", text: action.label });
     actionBtn.addEventListener("click", action.onClick);
     panel.append(actionBtn);
@@ -270,8 +589,7 @@ function deadEnd({ title, message, tone = "error", icon = "!", note, action }) {
       className: "block",
       text: "Refresh dashboard",
     });
-    // replace(), not assign(): this page should not sit in the back stack for
-    // a student to walk into again.
+    // replace(), not assign(): this page should not sit in the back stack.
     refreshBtn.addEventListener("click", () => location.replace("dashboard.html"));
     panel.append(refreshBtn);
   }
@@ -280,29 +598,111 @@ function deadEnd({ title, message, tone = "error", icon = "!", note, action }) {
 }
 
 /** Ends the exam without a score, e.g. when time ran out before submitting. */
-function endWithNotice(message, tone = "error") {
-  formEl.hidden = true;
+function endWithNotice(message) {
+  endPaper();
   resultEl.hidden = false;
+  backBtn.hidden = false;
 
-  const panel = el("div", { className: "result-panel result-fail" }, [
-    el("p", { className: `notice notice-${tone}`, text: message }),
+  const panel = el("div", { className: "result-panel" }, [
+    el("p", { className: "notice notice-error", text: message }),
   ]);
 
   resultEl.replaceChildren(panel);
   closeSeb(panel);
 }
 
+// --- submitting -----------------------------------------------------------
+
+/**
+ * Asks before submitting, showing where every question stands.
+ *
+ * "Go back" is focused and is what Escape and a click outside choose, so the
+ * only way to submit is to press the submit button on purpose.
+ */
+function confirmSubmit() {
+  return new Promise(resolve => {
+    const counts = statusCounts();
+    const answered = counts.answered + counts["answered-marked"];
+    const left = questions.length - answered;
+
+    const rows = STATUSES.map(status =>
+      el("tr", {}, [
+        el("td", {}, [swatch(status.key, counts[status.key])]),
+        el("td", { text: status.label }),
+      ])
+    );
+
+    const cancelBtn = el("button", {
+      type: "button",
+      className: "cbt-btn cbt-btn-plain",
+      text: "Go back to test",
+    });
+    const confirmBtn = el("button", {
+      type: "button",
+      className: "cbt-btn cbt-btn-submit",
+      text: "Yes, submit test",
+    });
+
+    const dialog = el("div", { className: "modal cbt-dialog" }, [
+      el("h2", { className: "modal-title", text: "Submit your test?" }),
+      el("table", { className: "cbt-summary" }, [el("tbody", {}, rows)]),
+      el("p", {
+        className: left ? "cbt-dialog-warn" : "cbt-dialog-note",
+        text: left
+          ? `${left} of ${questions.length} question${left === 1 ? " has" : "s have"} no answer.`
+          : `All ${questions.length} questions have an answer.`,
+      }),
+      el("p", {
+        className: "cbt-dialog-note",
+        text: "Once submitted, you cannot change your answers or return to this test.",
+      }),
+      el("div", { className: "modal-actions" }, [cancelBtn, confirmBtn]),
+    ]);
+    dialog.setAttribute("role", "alertdialog");
+    dialog.setAttribute("aria-modal", "true");
+    dialog.setAttribute("aria-label", "Submit your test?");
+
+    const backdrop = el("div", { className: "modal-backdrop" }, [dialog]);
+
+    const close = value => {
+      if (!closeConfirm) return;
+      closeConfirm = null;
+      document.removeEventListener("keydown", onKey);
+      backdrop.remove();
+      resolve(value);
+    };
+    closeConfirm = () => close(false);
+
+    function onKey(event) {
+      if (event.key === "Escape") close(false);
+    }
+
+    cancelBtn.addEventListener("click", () => close(false));
+    confirmBtn.addEventListener("click", () => close(true));
+    backdrop.addEventListener("click", event => {
+      if (event.target === backdrop) close(false);
+    });
+    document.addEventListener("keydown", onKey);
+
+    document.body.append(backdrop);
+    cancelBtn.focus();
+  });
+}
+
+const NAV_BUTTONS = [saveNextBtn, markBtn, clearBtn, prevBtn];
+
 /**
  * @param {boolean} auto True when the timer fired rather than the student.
  */
 async function submit(auto = false) {
-  if (submitted) return;
+  if (submitted || preview) return;
 
   if (!auto) {
-    const unanswered = questions.length - Number(answeredEl.textContent.split(" ")[0]);
-    if (unanswered > 0 && !confirm(`${unanswered} question(s) are unanswered. Submit anyway?`)) {
-      return;
-    }
+    const sure = await confirmSubmit();
+    // The clock may have run out while the dialog was open, and submitted.
+    if (!sure || submitted) return;
+  } else {
+    closeConfirm?.();
   }
 
   // Set before the request, not after: a second click while it is in flight
@@ -311,6 +711,7 @@ async function submit(auto = false) {
   stopTimer();
 
   const reset = setBusy(submitBtn, auto ? "Time up — submitting..." : "Submitting...");
+  for (const button of NAV_BUTTONS) button.disabled = true;
 
   try {
     // Graded on the server: the browser never sees the answer key, and the
@@ -321,8 +722,9 @@ async function submit(auto = false) {
     });
     if (error) throw error;
 
+    forget();
     showResult(data);
-    toast(auto ? "Time is up. Your test was submitted." : "Test submitted and graded.", "success");
+    toast(auto ? "Time is up. Your test was submitted." : "Test submitted.", "success");
   } catch (err) {
     console.error("Submit failed:", err);
 
@@ -331,8 +733,7 @@ async function submit(auto = false) {
         ? "Tests are not set up yet. Run every migration in supabase/migrations/, newest included."
         : errorMessage(err, "Could not submit your test.");
 
-    // An auto-submit has no one to retry it — the time it needed is gone — so
-    // it ends the exam rather than handing back a button that cannot work.
+    // An auto-submit has no one to retry it — the time it needed is gone.
     if (auto) {
       endWithNotice(message);
       return;
@@ -342,7 +743,32 @@ async function submit(auto = false) {
     startTimer();
     toast(message, "error");
     reset();
+    for (const button of NAV_BUTTONS) button.disabled = false;
+    prevBtn.disabled = current === 0;
   }
+}
+
+submitBtn.addEventListener("click", () => submit(false));
+
+// --- the clock ------------------------------------------------------------
+
+function stopTimer() {
+  if (timerId !== null) {
+    clearInterval(timerId);
+    timerId = null;
+  }
+}
+
+let warningTimer = null;
+
+function showWarning(text, urgent) {
+  warningEl.textContent = text;
+  warningEl.classList.toggle("is-urgent", urgent);
+  warningEl.hidden = false;
+
+  clearTimeout(warningTimer);
+  // The last-minute warning stays up; the earlier ones get out of the way.
+  if (!urgent) warningTimer = setTimeout(() => (warningEl.hidden = true), 12000);
 }
 
 function renderClock() {
@@ -351,10 +777,15 @@ function renderClock() {
   const left = endsAtMs - Date.now();
   clockValueEl.textContent = formatClock(left);
 
-  // Colour is the warning a student actually notices; the toast below is for
-  // anyone who has scrolled the header out of view.
-  clockEl.classList.toggle("exam-clock-warn", left <= 5 * 60000 && left > 60000);
-  clockEl.classList.toggle("exam-clock-danger", left <= 60000);
+  clockEl.classList.toggle("is-warn", left <= 5 * 60000 && left > 60000);
+  clockEl.classList.toggle("is-danger", left <= 60000);
+
+  for (const warning of WARNINGS) {
+    if (left <= warning.ms && left > 0 && !warned.has(warning.ms)) {
+      warned.add(warning.ms);
+      showWarning(warning.text, warning.ms <= 60000);
+    }
+  }
 
   if (left <= 0) {
     stopTimer();
@@ -386,13 +817,23 @@ function armTimer({ ends_at: endsAt, server_time: serverTime }) {
   if (Number.isNaN(end) || Number.isNaN(server)) return;
 
   endsAtMs = Date.now() + (end - server);
-  startTimer();
 
+  // Reopening with four minutes left should say so once, not replay the
+  // ten- and five-minute warnings in a burst.
   const remaining = endsAtMs - Date.now();
-  if (remaining > 60000) {
-    toast(`You have ${formatClock(remaining)} to finish this test.`, "info");
+  const due = WARNINGS.filter(warning => remaining <= warning.ms);
+  for (const warning of due) warned.add(warning.ms);
+  if (due.length && remaining > 0) {
+    showWarning(
+      `${formatClock(remaining)} left. The test will be submitted automatically at 00:00.`,
+      due[due.length - 1].ms <= 60000
+    );
   }
+
+  startTimer();
 }
+
+// --- loading --------------------------------------------------------------
 
 function describeTest(test) {
   titleEl.textContent = test.title;
@@ -400,7 +841,6 @@ function describeTest(test) {
   document.title = `${test.title} · Exam Portal`;
 }
 
-/** Sub-heading under the title: length of the paper and its time limits. */
 function describeMeta(test) {
   const parts = [];
 
@@ -418,8 +858,7 @@ function describeMeta(test) {
  * States get_exam can return that end the page before any question loads.
  *
  * Each carries its own heading, because "why can I not take this test" has
- * several very different answers and a student needs to know which one they
- * are looking at — already done is reassuring, missed the deadline is not.
+ * several very different answers.
  */
 const BLOCKED = {
   not_found: {
@@ -440,13 +879,13 @@ const BLOCKED = {
       "Speak to your teacher if you think that is a mistake.",
   },
   already_attempted: {
-    icon: "\u2713",
+    icon: "✓",
     tone: "done",
     title: "Already submitted",
     message: "You have completed this test. Your result is on your dashboard under My Results.",
   },
   closed: {
-    icon: "\u23F1",
+    icon: "⏱",
     title: "Deadline passed",
     message: "This test closed before it was submitted, so it can no longer be taken.",
   },
@@ -456,7 +895,7 @@ const BLOCKED = {
     message: "This test has not reached its start time.",
   },
   time_up: {
-    icon: "\u23F1",
+    icon: "⏱",
     title: "Time ran out",
     message: "Your time for this test has run out, so it can no longer be submitted.",
   },
@@ -476,9 +915,8 @@ async function loadExam() {
 
   const { data, error } = await supabase.rpc("get_exam", {
     p_test_id: testId,
-    // Whether this page can see SEB's own JavaScript API. Recorded against the
-    // attempt rather than used to refuse: it is what tells a teacher that a
-    // browser merely claiming to be SEB in its user agent was not really SEB.
+    // Recorded for the record only: genuine SEB attempts arrive without the
+    // API, so it flags nothing.
     p_seb_api: typeof window.SafeExamBrowser !== "undefined",
   });
 
@@ -491,7 +929,7 @@ async function loadExam() {
     deadEnd({
       title: notSetUp ? "Tests are not set up" : "Could not load this test",
       message: notSetUp
-        ? "Built-in tests are not set up yet. Run supabase/migrations/0008_exam_delivery.sql."
+        ? "Built-in tests are not set up yet. Run every migration in supabase/migrations/."
         : "Something went wrong loading this test. Please try again.",
     });
     return;
@@ -499,20 +937,16 @@ async function loadExam() {
 
   if (data?.test) describeTest(data.test);
 
-  // Arriving early is not an error, it is a wait — so it gets the moment it
-  // opens and a live countdown rather than a red notice.
+  // Arriving early is a wait, not an error: a live countdown, then a reload.
   if (data?.state === "not_open_yet") {
     const opensAt = new Date(data.opens_at);
 
-    // Anchored to the server's clock, like the exam timer: the countdown must
-    // reach zero at the moment get_exam() will actually agree the test is
-    // open, or the reload below lands on this same screen again.
+    // Anchored to the server's clock, so the reload lands when get_exam()
+    // agrees the test is open.
     const skew = Date.parse(data.server_time) - Date.now();
     const waitMs = opensAt - skew - Date.now();
 
-    // A locked-down browser is a poor waiting room — the student cannot quit
-    // it without a teacher's password. A short wait is worth sitting through;
-    // a long one means come back later, so SEB is closed.
+    // A locked-down browser is a poor waiting room for a long wait.
     if (isRunningInSeb() && waitMs > SEB_WAIT_LIMIT_MS) {
       deadEnd({
         icon: "\u{1F512}",
@@ -542,9 +976,8 @@ async function loadExam() {
     return;
   }
 
-  // A protected test opened in an ordinary browser. The database refused to
-  // hand over the paper; rather than a dead end, send the student to the Safe
-  // Exam Browser launcher they skipped.
+  // A protected test opened in an ordinary browser: send the student to the
+  // Safe Exam Browser launcher they skipped.
   if (data?.state === "seb_required") {
     deadEnd({
       icon: "\u{1F512}",
@@ -553,8 +986,6 @@ async function loadExam() {
       message:
         "This test is protected, so it can only be taken in Safe Exam Browser. " +
         "Opening its link in an ordinary browser will not start it.",
-      // So a genuine SEB that is not being recognised can be diagnosed from a
-      // screenshot rather than guessed at.
       note: data.user_agent ? `Browser seen: ${data.user_agent}` : undefined,
       action: {
         label: "Open in Safe Exam Browser",
@@ -599,18 +1030,22 @@ async function loadExam() {
 
   // An admin opening a draft sees the paper exactly as a student would, but
   // with no clock and no way to submit — previewing must not create a result.
-  if (data.state === "preview") {
+  preview = data.state === "preview";
+  if (preview) {
     setNotice(stateEl, "Preview of a draft. Students cannot open this test yet.", "info");
     submitBtn.disabled = true;
     submitBtn.textContent = "Preview only";
+  } else {
+    restore();
+    window.addEventListener("beforeunload", guardUnload);
   }
 
-  listEl.replaceChildren(...questions.map(questionCard));
+  // Leaving mid-exam is one click too easy with a Back button on screen.
+  backBtn.hidden = !preview;
   formEl.hidden = false;
-  updateAnsweredCount();
+  renderQuestion();
 
   if (data.state === "open") armTimer(data);
 }
 
-submitBtn.addEventListener("click", () => submit(false));
 await loadExam();

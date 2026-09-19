@@ -81,15 +81,15 @@ automatically, and third-party code into `vendor`.
 
 ## Database
 
-| Table                              | Columns used by the app                                                                                                   |
-| ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
-| `users`                            | `email`, `role` (`student` \| `admin`)                                                                                    |
-| `tests`                            | `id`, `title`, `subject`, `kind`, `status`, `form_url`, `duration_minutes`, `closes_at`, `requires_seb`, `seb_config_url` |
-| `questions`                        | `test_id`, `prompt`, `type`, `options`, `answer_key`, `points`, `position` — **admin-only, never read by a student**      |
-| `results`                          | `test_id` → `tests.id`, `email`, `score`, `total`, `percentage`, `attempted_at`                                           |
-| `exam_attempts`                    | `test_id`, `email`, `started_at`, `submitted_at` — the server-held exam clock                                             |
-| `test_secrets`                     | `test_id`, `quit_password` — admin-only                                                                                   |
-| `videos`, `notices`, `assignments` | content shown on the student dashboard                                                                                    |
+| Table                              | Columns used by the app                                                                                                                                           |
+| ---------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `users`                            | `email`, `role` (`student` \| `admin`)                                                                                                                            |
+| `tests`                            | `id`, `title`, `subject`, `kind`, `status`, `form_url`, `duration_minutes`, `closes_at`, `requires_seb`, `seb_config_url`, `shuffle_questions`, `shuffle_options` |
+| `questions`                        | `test_id`, `prompt`, `type`, `options`, `answer_key`, `tolerance`, `points`, `position` — **admin-only, never read by a student**                                 |
+| `results`                          | `test_id` → `tests.id`, `email`, `score`, `total`, `percentage`, `attempted_at`                                                                                   |
+| `exam_attempts`                    | `test_id`, `email`, `started_at`, `submitted_at` — the server-held exam clock                                                                                     |
+| `test_secrets`                     | `test_id`, `quit_password` — admin-only                                                                                                                           |
+| `videos`, `notices`, `assignments` | content shown on the student dashboard                                                                                                                            |
 
 Storage buckets: `avatars` for profile pictures, `seb-configs` for generated
 lockdown files.
@@ -130,6 +130,43 @@ automatically. If you move the portal to a different address, press **Refresh
 lockdown** on each test while viewing it from the new address — a config that
 still points at the old one blocks the exam from inside SEB, which looks to a
 student like a failed login.
+
+### The exam screen
+
+Students sit a built-in test on a computer-based-test layout: one question at
+a time, a sticky timer top-right, and a numbered question palette on the right
+(a drawer behind the **Palette** button on tablets and phones).
+
+| Palette colour         | Meaning                                       |
+| ---------------------- | --------------------------------------------- |
+| Grey                   | Not visited                                   |
+| Red                    | Seen, no answer                               |
+| Green                  | Answered                                      |
+| Purple                 | Marked for review, no answer                  |
+| Purple with green tick | Answered and marked for review — still graded |
+
+- **Answers are recorded the moment they are chosen**, not only on _Save &
+  Next_. A student whose time runs out between choosing and pressing a button
+  keeps the answer. _Save & Next_ clears the review mark and moves on; _Mark
+  for Review & Next_ sets it.
+- **Progress survives a reload or crash.** Answers, marks and position are kept
+  in the browser until the test is submitted, and the server clock keeps
+  running meanwhile.
+- **Submitting asks first**, listing every status count. _Go back_ is the
+  focused button, and Escape or clicking outside cancels.
+- **Warnings** appear at 10, 5 and 1 minute left; the clock turns amber then
+  red, and the test submits itself at 00:00.
+
+**Question types:** single correct (A–D, one choice), multiple correct, short
+answer, and **numerical value** — the student types a number (or uses the
+on-screen keypad) and it is compared as a number, so `2.5`, `2.50` and `+2.5`
+all match. Set a **tolerance** to accept a range. Numerical questions need
+`0017_cbt_numerical_and_shuffle.sql`.
+
+**Shuffling** is per test: tick _Shuffle question order_ and/or _Shuffle answer
+options_. The order is worked out in the database from the student's email, so
+each student gets their own order and keeps it across reloads, and the
+unshuffled order never reaches the browser.
 
 ### Maths questions
 
@@ -328,20 +365,18 @@ Browser" panel instead of the paper, and — because the check runs before the
 attempt row is created — does not start the student's clock. Teachers are
 exempt, so a published test can still be checked from Chrome.
 
-That check stops copy-and-paste. It does not stop someone who fakes the header,
-so every attempt also records what was seen: the header verdict, whether the
-exam page found SEB's own JavaScript API, and the raw user agent. Results then
-carry a flag:
+That check stops copy-and-paste. It does not stop someone who fakes the header.
+Every attempt records the header verdict, whether the exam page found SEB's
+JavaScript API, and the raw user agent. Only the header verdict is shown, as a
+**Not in SEB** flag — students are refused without it, so in practice that is a
+teacher's attempt, or protection toggled around it.
 
-- **Not in SEB** — the attempt did not come from SEB. Students are refused, so
-  in practice this is a teacher's attempt, or protection toggled around it.
-- **SEB unconfirmed** — the browser _claimed_ to be SEB but the page could not
-  find SEB's API. That points to a faked identity, or an SEB version too old to
-  provide the API. Sit one test in your own SEB after deploying: if your genuine
-  attempt shows this flag, the signal is not reliable for your SEB version.
+The JavaScript API is recorded but not flagged: genuine SEB attempts arrived
+without it, so its absence proves nothing. Detecting a faked header reliably
+needs SEB's Config Key / Browser Exam Key check.
 
-Results recorded before this existed carry neither flag — not recorded is not
-the same as failed.
+Results recorded before this existed carry no flag — not recorded is not the
+same as failed.
 
 If SEB is ever wrongly not recognised, the panel shows the browser identity
 that was seen, and unticking "Protect with Safe Exam Browser" on that test is

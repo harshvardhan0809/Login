@@ -42,6 +42,9 @@ const testRequiresSeb = document.getElementById("testRequiresSeb");
 const testKind = document.getElementById("testKind");
 const testLink = document.getElementById("testLink");
 const testLinkField = document.getElementById("testLinkField");
+const testShuffleFields = document.getElementById("testShuffleFields");
+const testShuffleQuestions = document.getElementById("testShuffleQuestions");
+const testShuffleOptions = document.getElementById("testShuffleOptions");
 const testDuration = document.getElementById("testDuration");
 const testCloses = document.getElementById("testCloses");
 const testOpens = document.getElementById("testOpens");
@@ -103,6 +106,7 @@ function labelled(text, control, hint) {
 /** A link test has nowhere to put questions, so the link box replaces them. */
 function syncKindFields() {
   testLinkField.hidden = testKind.value !== "link";
+  testShuffleFields.hidden = testKind.value === "link";
 }
 
 testKind.addEventListener("change", syncKindFields);
@@ -174,6 +178,9 @@ function readTestForm() {
     kind,
     form_url: kind === "link" ? link : null,
     requires_seb: testRequiresSeb.checked,
+    // Sent only when ticked, so creating tests still works before 0017 is run.
+    ...(kind === "builtin" && testShuffleQuestions.checked ? { shuffle_questions: true } : {}),
+    ...(kind === "builtin" && testShuffleOptions.checked ? { shuffle_options: true } : {}),
     // Always a draft. Releasing is a separate, deliberate press, so questions
     // are finished before any student can open the test.
     status: "draft",
@@ -193,7 +200,7 @@ addTestBtn.addEventListener("click", async () => {
     console.error("Create test failed:", error.message);
     toast(
       isMissingColumn(error)
-        ? "Run supabase/migrations/0008_exam_delivery.sql to enable drafts and deadlines."
+        ? "Run the newest migrations in supabase/migrations/ (0017 adds shuffling)."
         : errorMessage(error, "Could not create the test."),
       "error"
     );
@@ -207,6 +214,8 @@ addTestBtn.addEventListener("click", async () => {
   testOpens.value = "";
   testCloses.value = "";
   testRequiresSeb.checked = true;
+  testShuffleQuestions.checked = false;
+  testShuffleOptions.checked = false;
   testKind.value = "builtin";
   syncKindFields();
 
@@ -222,7 +231,11 @@ addTestBtn.addEventListener("click", async () => {
 
 /** Migration 0008 has not been run, so the new columns are missing. */
 function isMissingColumn(error) {
-  return error?.code === "42703" || /column .* does not exist/i.test(error?.message ?? "");
+  return (
+    error?.code === "42703" ||
+    error?.code === "PGRST204" ||
+    /column .* does not exist|could not find the .* column/i.test(error?.message ?? "")
+  );
 }
 
 /**
@@ -339,6 +352,18 @@ function editForm(test, onDone) {
     value: toDatetimeLocal(test.closes_at),
   });
   const sebInput = el("input", { type: "checkbox", checked: test.requires_seb !== false });
+  const shuffleQInput = el("input", { type: "checkbox", checked: test.shuffle_questions === true });
+  const shuffleOptInput = el("input", { type: "checkbox", checked: test.shuffle_options === true });
+  const shuffleFields = el("div", {}, [
+    el("label", { className: "checkbox-field" }, [
+      shuffleQInput,
+      el("span", { text: "Shuffle question order for each student" }),
+    ]),
+    el("label", { className: "checkbox-field" }, [
+      shuffleOptInput,
+      el("span", { text: "Shuffle answer options for each student" }),
+    ]),
+  ]);
 
   const kindSelect = el("select", {}, [
     el("option", { value: "builtin", text: "Write them here (auto-graded)" }),
@@ -347,7 +372,10 @@ function editForm(test, onDone) {
   kindSelect.value = test.kind ?? "builtin";
 
   const linkField = labelled("Test link", linkInput);
-  const syncKind = () => (linkField.hidden = kindSelect.value !== "link");
+  const syncKind = () => {
+    linkField.hidden = kindSelect.value !== "link";
+    shuffleFields.hidden = kindSelect.value === "link";
+  };
   kindSelect.addEventListener("change", syncKind);
   syncKind();
 
@@ -393,6 +421,13 @@ function editForm(test, onDone) {
           kind,
           form_url: updated.form_url,
           requires_seb: updated.requires_seb,
+          // Only sent when set, so editing a test still works before 0017 is run.
+          ...(shuffleQInput.checked || test.shuffle_questions
+            ? { shuffle_questions: kind === "builtin" && shuffleQInput.checked }
+            : {}),
+          ...(shuffleOptInput.checked || test.shuffle_options
+            ? { shuffle_options: kind === "builtin" && shuffleOptInput.checked }
+            : {}),
           ...schedule,
         })
         .eq("id", test.id);
@@ -410,7 +445,7 @@ function editForm(test, onDone) {
       console.error("Update test failed:", err);
       toast(
         isMissingColumn(err)
-          ? "Run supabase/migrations/0008_exam_delivery.sql first."
+          ? "Run the newest migrations in supabase/migrations/ first (0017 adds shuffling)."
           : errorMessage(err, "Could not update the test."),
         "error"
       );
@@ -426,6 +461,7 @@ function editForm(test, onDone) {
       labelled("Subject", subjectInput),
       labelled("Questions", kindSelect),
       linkField,
+      shuffleFields,
       labelled("Maximum time (minutes)", durationInput, "Blank means no time limit."),
       labelled("Start time", opensInput, "Blank means available as soon as it is published."),
       labelled("Deadline", closesInput, "Blank means no deadline."),

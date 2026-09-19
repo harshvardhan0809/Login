@@ -70,7 +70,7 @@ export function distribution(results) {
 
 /** Turns a stored answer key back into the text a teacher would recognise. */
 function describeAnswer(question, key) {
-  if (question.type === "text") return key;
+  if (question.type === "text" || question.type === "numerical") return key;
 
   const options = Array.isArray(question.options) ? question.options : [];
   const labels = key

@@ -13,6 +13,7 @@ import { mathField, mathPalette } from "./mathField.js";
 const TYPES = [
   { value: "single", label: "Single choice", hint: "One correct option" },
   { value: "multiple", label: "Multiple choice", hint: "Several correct options" },
+  { value: "numerical", label: "Numerical value", hint: "Student types a number" },
   { value: "text", label: "Short answer", hint: "Typed answer, matched exactly" },
 ];
 
@@ -97,6 +98,8 @@ function composer(testId, onSaved, nextPosition) {
   const prompt = el("input", { type: "text", placeholder: "What is 7 x 8?" });
   const points = el("input", { type: "number", value: "1", min: "1", step: "1" });
   const textAnswer = el("input", { type: "text", placeholder: "Accepted answer" });
+  const numberAnswer = el("input", { type: "text", inputMode: "decimal", placeholder: "e.g. 2.5" });
+  const tolerance = el("input", { type: "number", value: "0", min: "0", step: "any" });
   const typeSelect = el(
     "select",
     {},
@@ -111,6 +114,19 @@ function composer(testId, onSaved, nextPosition) {
     "Matched as plain text against what the student types, so keep it typeable: " +
       "x^2 or 3.14, not $x^{2}$. Case and surrounding spaces are ignored."
   );
+  const numberField = el("div", { className: "form-stack" }, [
+    field(
+      "Correct answer",
+      numberAnswer,
+      "A plain number: digits, an optional minus sign and decimal point. " +
+        "2.5, 2.50 and +2.5 are all accepted as the same answer."
+    ),
+    field(
+      "Tolerance (±)",
+      tolerance,
+      "How far off an answer may be and still score. 0 means exact; 0.01 accepts 2.49 to 2.51."
+    ),
+  ]);
   const saveBtn = el("button", { type: "button", text: "Add Question" });
 
   const promptField = field("Question", prompt);
@@ -131,12 +147,15 @@ function composer(testId, onSaved, nextPosition) {
     state.type = typeSelect.value;
     state.answerKey = [];
     const isText = state.type === "text";
+    const isNumber = state.type === "numerical";
+    const typed = isText || isNumber;
 
-    optionsBox.hidden = isText;
-    addOptionBtn.hidden = isText;
+    optionsBox.hidden = typed;
+    addOptionBtn.hidden = typed;
     textField.hidden = !isText;
+    numberField.hidden = !isNumber;
 
-    if (!isText && state.options.length === 0) {
+    if (!typed && state.options.length === 0) {
       state.options = Array.from({ length: DEFAULT_OPTIONS }, () => ({
         id: optionId(),
         text: "",
@@ -157,8 +176,18 @@ function composer(testId, onSaved, nextPosition) {
 
     let options = [];
     let answerKey;
+    let tol = 0;
 
-    if (state.type === "text") {
+    if (state.type === "numerical") {
+      const value = numberAnswer.value.trim();
+      // Same rule the database grades with (parse_decimal in migration 0017).
+      if (!/^[+-]?(\d+\.?\d*|\.\d+)$/.test(value)) {
+        return toast("Enter the correct answer as a plain number, like 2.5 or -12.", "error");
+      }
+      tol = Number(tolerance.value || 0);
+      if (!Number.isFinite(tol) || tol < 0) return toast("Tolerance must be 0 or more.", "error");
+      answerKey = [value];
+    } else if (state.type === "text") {
       const accepted = textAnswer.value.trim();
       if (!accepted) return toast("Enter the correct answer.", "error");
       answerKey = [accepted];
@@ -183,6 +212,9 @@ function composer(testId, onSaved, nextPosition) {
         answer_key: answerKey,
         points: Number(points.value) || 1,
         position: nextPosition(),
+        // Only numerical questions carry one; sent only then, so adding other
+        // questions keeps working before migration 0017 is run.
+        ...(state.type === "numerical" ? { tolerance: tol } : {}),
       },
     ]);
     reset();
@@ -192,7 +224,9 @@ function composer(testId, onSaved, nextPosition) {
       toast(
         error.code === "PGRST205"
           ? "Run supabase/migrations/0007_builtin_exams.sql to enable built-in tests."
-          : errorMessage(error, "Could not add the question."),
+          : state.type === "numerical" && /tolerance|questions_type_check/.test(error.message)
+            ? "Run supabase/migrations/0017_cbt_numerical_and_shuffle.sql to enable numerical questions."
+            : errorMessage(error, "Could not add the question."),
         "error"
       );
       return;
@@ -201,6 +235,8 @@ function composer(testId, onSaved, nextPosition) {
     clear(prompt);
     points.value = "1";
     clear(textAnswer);
+    numberAnswer.value = "";
+    tolerance.value = "0";
     state.options = [];
     state.answerKey = [];
     syncType();
@@ -218,7 +254,7 @@ function composer(testId, onSaved, nextPosition) {
       field("Type", typeSelect),
       field("Marks", points),
     ]),
-    el("div", { className: "answer-area" }, [optionsBox, addOptionBtn, textField]),
+    el("div", { className: "answer-area" }, [optionsBox, addOptionBtn, textField, numberField]),
     saveBtn,
   ]);
 
@@ -229,13 +265,16 @@ function composer(testId, onSaved, nextPosition) {
 function questionRow(question, reload) {
   const typeLabel = TYPES.find(t => t.value === question.type)?.label ?? question.type;
 
+  const tol = Number(question.tolerance) || 0;
   const answerText =
-    question.type === "text"
-      ? (question.answer_key ?? []).join(", ")
-      : (question.options ?? [])
-          .filter(option => (question.answer_key ?? []).includes(option.id))
-          .map(option => option.text)
-          .join(", ");
+    question.type === "numerical"
+      ? `${(question.answer_key ?? []).join(", ")}${tol ? ` (± ${tol})` : ""}`
+      : question.type === "text"
+        ? (question.answer_key ?? []).join(", ")
+        : (question.options ?? [])
+            .filter(option => (question.answer_key ?? []).includes(option.id))
+            .map(option => option.text)
+            .join(", ");
 
   const remove = el("button", { type: "button", className: "delete-btn", text: "Delete" });
   remove.addEventListener("click", async () => {
