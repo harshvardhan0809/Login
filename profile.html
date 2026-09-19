@@ -8,8 +8,25 @@
     <link rel="icon" href="/favicon.ico" />
     <link rel="stylesheet" href="/src/styles/style.css" />
   </head>
-  <body>
-    <main class="card dashboard-card">
+  <body class="app">
+    <header class="app-bar">
+      <div class="app-bar-inner">
+        <a class="app-brand" href="dashboard.html">
+          <span class="app-brand-mark" aria-hidden="true">EP</span>
+          <span>Exam Portal</span>
+        </a>
+        <span class="app-section">Account</span>
+        <nav class="app-nav" aria-label="Main">
+          <a href="dashboard.html">Dashboard</a>
+          <a href="profile.html" aria-current="page">Profile</a>
+        </nav>
+        <div class="app-bar-right">
+          <button type="button" class="app-logout" data-logout>Logout</button>
+        </div>
+      </div>
+    </header>
+
+    <main class="card dashboard-card profile-page">
       <header class="page-header">
         <div>
           <p class="eyebrow">Account</p>
@@ -18,26 +35,28 @@
         </div>
       </header>
 
-      <img id="avatarPreview" class="avatar" alt="Profile picture preview" />
+      <section class="panel-form profile-panel">
+        <img id="avatarPreview" class="avatar" alt="Profile picture preview" />
 
-      <form class="form-stack" novalidate>
-        <div class="field">
-          <label for="nameInput">Name</label>
-          <input id="nameInput" placeholder="Your name" autocomplete="name" required />
+        <form class="form-stack" novalidate>
+          <div class="field">
+            <label for="nameInput">Name</label>
+            <input id="nameInput" placeholder="Your name" autocomplete="name" required />
+          </div>
+
+          <div class="field">
+            <label for="fileInput">Profile Picture</label>
+            <input id="fileInput" type="file" accept="image/*" />
+          </div>
+        </form>
+
+        <div id="passwordMount"></div>
+
+        <div class="actions">
+          <button id="saveBtn" type="button">Save Changes</button>
+          <button id="backBtn" type="button" class="secondary">Back to Dashboard</button>
         </div>
-
-        <div class="field">
-          <label for="fileInput">Profile Picture</label>
-          <input id="fileInput" type="file" accept="image/*" />
-        </div>
-      </form>
-
-      <div id="passwordMount"></div>
-
-      <div class="actions">
-        <button id="saveBtn" type="button">Save Changes</button>
-        <button id="backBtn" type="button" class="secondary">Back to Dashboard</button>
-      </div>
+      </section>
     </main>
 
     <script type="module" src="/src/pages/profile.js"></script>

@@ -15,7 +15,6 @@ import { supabase } from "../lib/supabase.js";
 import { requireAdmin, wireLogout } from "../lib/session.js";
 import { countLabel, el, errorMessage, renderList, setBusy, setNotice, toast } from "../lib/ui.js";
 import { formatDateTime, relativeTime } from "../lib/dates.js";
-import { reveal, revealPage } from "../lib/reveal.js";
 import { downloadCsv, toCsv } from "../lib/analytics.js";
 import { sebBadge } from "../lib/sebBadge.js";
 
@@ -33,7 +32,6 @@ const ACTIVE_DAYS = 30;
 
 const me = await requireAdmin();
 wireLogout();
-revealPage();
 backBtn.addEventListener("click", () => location.replace("admin.html"));
 
 let directory = [];
@@ -75,7 +73,6 @@ function renderStats() {
     tile(admins, "Teachers"),
     tile(active, `Active in ${ACTIVE_DAYS} days`)
   );
-  reveal(statsEl.children);
 }
 
 // --- the directory ---------------------------------------------------------

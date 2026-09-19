@@ -1,5 +1,5 @@
 import { supabase, uploadAvatar, DEFAULT_AVATAR } from "../lib/supabase.js";
-import { requireUser } from "../lib/session.js";
+import { requireUser, wireLogout } from "../lib/session.js";
 import { changePasswordSection } from "../lib/password.js";
 import { errorMessage, setBusy, toast } from "../lib/ui.js";
 
@@ -12,6 +12,7 @@ const backBtn = document.getElementById("backBtn");
 const MAX_AVATAR_BYTES = 2 * 1024 * 1024;
 
 const user = await requireUser();
+wireLogout();
 
 avatarPreview.src = user.user_metadata?.photo || DEFAULT_AVATAR;
 nameInput.value = user.user_metadata?.name || "";

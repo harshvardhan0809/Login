@@ -8,9 +8,27 @@
     <link rel="icon" href="/favicon.ico" />
     <link rel="stylesheet" href="/src/styles/style.css" />
   </head>
-  <body>
+  <body class="app">
+    <header class="app-bar">
+      <div class="app-bar-inner">
+        <a class="app-brand" href="admin.html">
+          <span class="app-brand-mark" aria-hidden="true">EP</span>
+          <span>Exam Portal</span>
+        </a>
+        <span class="app-section">Teacher</span>
+        <nav class="app-nav" aria-label="Main">
+          <a href="admin.html">Dashboard</a>
+          <a href="users.html" aria-current="page">Users</a>
+          <a href="results.html">Analysis</a>
+        </nav>
+        <div class="app-bar-right">
+          <button type="button" class="app-logout" data-logout>Logout</button>
+        </div>
+      </div>
+    </header>
+
     <main class="card dashboard-card analysis-card">
-      <header class="page-header" data-reveal>
+      <header class="page-header">
         <div>
           <p class="eyebrow">Teacher</p>
           <h1>Users &amp; Records</h1>
@@ -23,24 +41,22 @@
         </div>
       </header>
 
-      <div class="stats" id="userStats" data-reveal></div>
+      <div class="stats" id="userStats"></div>
 
-      <div class="field filter-field" data-reveal>
+      <div class="field filter-field">
         <label for="userSearch">Search</label>
         <input id="userSearch" type="search" placeholder="Filter by email or role" />
       </div>
 
       <div id="directoryState"></div>
 
-      <div class="section-title" data-reveal>
+      <div class="section-title">
         <h2>Everyone</h2>
         <span id="userCount">0 users</span>
       </div>
       <div id="userTable" class="table-scroll"></div>
 
       <section id="userDetail" hidden></section>
-
-      <button type="button" class="secondary" data-logout>Logout</button>
     </main>
 
     <footer class="credits-bar">

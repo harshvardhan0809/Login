@@ -8,13 +8,29 @@
     <link rel="icon" href="/favicon.ico" />
     <link rel="stylesheet" href="/src/styles/style.css" />
   </head>
-  <body>
-    <a class="profile-menu" href="profile.html" aria-label="Open profile settings">
-      <img id="profileIcon" class="profile-icon" alt="Your profile picture" />
-    </a>
+  <body class="app">
+    <header class="app-bar">
+      <div class="app-bar-inner">
+        <a class="app-brand" href="dashboard.html">
+          <span class="app-brand-mark" aria-hidden="true">EP</span>
+          <span>Exam Portal</span>
+        </a>
+        <span class="app-section">Student</span>
+        <nav class="app-nav" aria-label="Main">
+          <a href="dashboard.html" aria-current="page">Dashboard</a>
+          <a href="profile.html">Profile</a>
+        </nav>
+        <div class="app-bar-right">
+          <a class="profile-menu" href="profile.html" aria-label="Open profile settings">
+            <img id="profileIcon" class="profile-icon" alt="Your profile picture" />
+          </a>
+          <button type="button" class="app-logout" data-logout>Logout</button>
+        </div>
+      </div>
+    </header>
 
     <main class="card dashboard-card">
-      <header class="page-header" data-reveal>
+      <header class="page-header">
         <div>
           <p class="eyebrow">Student Dashboard</p>
           <h1 id="welcomeText">Welcome!</h1>
@@ -22,11 +38,11 @@
         </div>
       </header>
 
-      <div class="stats" id="studentStats" data-reveal></div>
+      <div class="stats" id="studentStats"></div>
 
-      <div id="examAlert" data-reveal></div>
+      <div id="examAlert"></div>
 
-      <nav class="tabs" data-reveal role="tablist" aria-label="Dashboard sections">
+      <nav class="tabs" role="tablist" aria-label="Dashboard sections">
         <button type="button" class="tab" role="tab" data-tab="notices" aria-selected="true">
           Notice Board
         </button>
@@ -45,7 +61,7 @@
       </nav>
 
       <section id="panel-notices" role="tabpanel">
-        <div class="section-title" data-reveal>
+        <div class="section-title">
           <h2>Notice Board</h2>
           <span id="noticesCount">0 notices</span>
         </div>
@@ -53,7 +69,7 @@
       </section>
 
       <section id="panel-videos" role="tabpanel" hidden>
-        <div class="section-title" data-reveal>
+        <div class="section-title">
           <h2>Video Lessons</h2>
           <span id="videosCount">0 videos</span>
         </div>
@@ -65,7 +81,7 @@
       </section>
 
       <section id="panel-assignments" role="tabpanel" hidden>
-        <div class="section-title" data-reveal>
+        <div class="section-title">
           <h2>Assignments</h2>
           <span id="assignmentsCount">0 assignments</span>
         </div>
@@ -73,7 +89,7 @@
       </section>
 
       <section id="panel-tests" role="tabpanel" hidden>
-        <div class="section-title" data-reveal>
+        <div class="section-title">
           <h2>Available Tests</h2>
           <span id="testsCount">0 pending</span>
         </div>
@@ -81,14 +97,12 @@
       </section>
 
       <section id="panel-results" role="tabpanel" hidden>
-        <div class="section-title" data-reveal>
+        <div class="section-title">
           <h2>Previous Results</h2>
           <span id="resultsCount">0 attempts</span>
         </div>
         <div id="resultsList"></div>
       </section>
-
-      <button type="button" class="secondary" data-logout>Logout</button>
     </main>
 
     <footer class="credits-bar">
