@@ -13,6 +13,8 @@ import { formatDateTime } from "../lib/dates.js";
 import { mathText } from "../lib/math.js";
 import { sebBadge } from "../lib/sebBadge.js";
 import {
+  correctAnswer,
+  labelQuestions,
   distribution,
   downloadCsv,
   questionAnalysis,
@@ -94,7 +96,7 @@ function renderDistribution(bands, total) {
 }
 
 function questionRow(item) {
-  const { question, difficulty } = item;
+  const { question, difficulty, answerText } = item;
 
   const bar = el("div", { className: `meter-fill meter-${difficulty.tone}` });
   bar.style.width = `${item.percentCorrect}%`;
@@ -107,10 +109,16 @@ function questionRow(item) {
 
   return el("article", { className: "analysis-row" }, [
     el("div", { className: "analysis-row-head" }, [
-      el("span", { className: "question-number", text: `Q${item.number}` }),
+      el("span", { className: "question-number", text: question.label ?? `Q${item.number}` }),
       mathText("p", { className: "question-prompt" }, question.prompt),
+      ...(question.is_bonus ? [el("span", { className: "pill pill-bonus", text: "Bonus" })] : []),
       el("span", { className: `pill pill-${difficulty.tone}`, text: difficulty.label }),
       el("span", { className: "analysis-pct", text: `${item.percentCorrect}%` }),
+    ]),
+    // The prompt and the answer can both hold LaTeX, so both are typeset.
+    el("p", { className: "analysis-answer" }, [
+      el("span", { className: "analysis-answer-label", text: "Correct answer" }),
+      mathText("span", {}, answerText),
     ]),
     el("div", { className: "meter" }, [bar]),
     el("p", { className: "analysis-facts", text: facts.join(" · ") }),
@@ -144,7 +152,11 @@ function renderStudents(rows, questions, test) {
   const head = el("tr", {}, [
     el("th", { text: "Student" }),
     ...questions.map((question, index) =>
-      el("th", { className: "cell-q", title: question.prompt, text: `Q${index + 1}` })
+      el("th", {
+        className: "cell-q",
+        title: `${question.prompt}\nAnswer: ${correctAnswer(question, { letters: !test.shuffle_options })}`,
+        text: question.label ?? `Q${index + 1}`,
+      })
     ),
     el("th", { className: "cell-num", text: "Score" }),
     el("th", { className: "cell-num", text: "%" }),
@@ -211,7 +223,14 @@ function render() {
 
   renderSummary(scoreStats(results, PASS_MARK));
   renderDistribution(distribution(results), results.length);
-  renderQuestions(questionAnalysis(questions, results));
+  // Letters only mean something when every student saw the same order.
+  const letters = !test.shuffle_options;
+  renderQuestions(
+    questionAnalysis(questions, results).map(item => ({
+      ...item,
+      answerText: correctAnswer(item.question, { letters }),
+    }))
+  );
   renderStudents(studentRows(results, questions), questions, test);
 }
 
@@ -229,7 +248,11 @@ function exportCurrent() {
 
   const header = [
     "Student",
-    ...questions.map((question, index) => `Q${index + 1}: ${question.prompt}`),
+    ...questions.map(
+      (question, index) =>
+        `${question.label ?? `Q${index + 1}`}${question.is_bonus ? " (bonus)" : ""}: ` +
+        `${question.prompt} [answer: ${correctAnswer(question, { letters: !test.shuffle_options })}]`
+    ),
     "Score",
     "Total",
     "Percentage",
@@ -265,10 +288,7 @@ async function load() {
   setNotice(stateEl, "Loading results...");
 
   const [testRows, questionRows, resultRows, detailRows] = await Promise.all([
-    supabase
-      .from("tests")
-      .select("id, title, subject, status, requires_seb")
-      .order("created_at", { ascending: false }),
+    supabase.from("tests").select("*").order("created_at", { ascending: false }),
     supabase.from("questions").select("*").order("position", { ascending: true }),
     supabase.from("results").select("*").order("attempted_at", { ascending: false }),
     // Per-question detail lives in its own teacher-only table, so students
@@ -294,6 +314,7 @@ async function load() {
     if (!questionsByTest.has(question.test_id)) questionsByTest.set(question.test_id, []);
     questionsByTest.get(question.test_id).push(question);
   }
+  for (const [testId, list] of questionsByTest) questionsByTest.set(testId, labelQuestions(list));
 
   // Missing only until migration 0016 has run; question analysis is then
   // simply empty rather than the page failing.

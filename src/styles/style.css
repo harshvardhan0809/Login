@@ -3839,3 +3839,197 @@ body.cbt .cbt-summary .cbt-swatch.st-answered-marked {
   border-color: rgba(220, 38, 38, 0.24);
   background: #fef6f6;
 }
+
+/* --- bonus questions ----------------------------------------------------- */
+
+.pill-bonus {
+  background: rgba(124, 58, 237, 0.12);
+  color: #6d28d9;
+}
+
+/* The heading that separates the bonus section in the exam palette. */
+body.cbt .cbt-grid-heading {
+  grid-column: 1 / -1;
+  margin: 8px 0 0;
+  padding-top: 10px;
+  border-top: 1px dashed var(--line-strong);
+  color: #6d28d9;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+body.cbt .cbt-chip-bonus {
+  border-color: #ddd6fe;
+  background: #f5f3ff;
+  color: #6d28d9;
+}
+
+/* --- bulk import --------------------------------------------------------- */
+
+.import-panel .section-title {
+  margin: 0 0 4px;
+}
+
+.import-panel > .sub {
+  margin: 0 0 12px;
+}
+
+.import-rules {
+  margin-bottom: 12px;
+  padding: 10px 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--well);
+  font-size: 0.88rem;
+}
+
+.import-rules summary {
+  color: var(--brand);
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.import-rules ul {
+  margin: 10px 0;
+  padding-left: 20px;
+  color: var(--text-soft);
+  line-height: 1.6;
+}
+
+.import-example {
+  max-height: 18rem;
+  margin: 0;
+  padding: 12px 14px;
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--surface-1);
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 0.82rem;
+  line-height: 1.5;
+  white-space: pre-wrap;
+}
+
+.import-input {
+  font-family: var(--mono);
+  font-size: 0.86rem;
+  line-height: 1.55;
+}
+
+.import-panel .submission-actions {
+  margin-top: 12px;
+}
+
+.import-summary {
+  margin: 14px 0 10px;
+  padding: 10px 13px;
+  border-radius: var(--r-sm);
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.import-summary.is-ok {
+  border: 1px solid rgba(22, 163, 74, 0.35);
+  background: #f0fdf4;
+  color: #166534;
+}
+
+.import-summary.is-error {
+  border: 1px solid rgba(220, 38, 38, 0.3);
+  background: #fef2f2;
+  color: #991b1b;
+}
+
+.import-preview {
+  display: grid;
+  gap: 10px;
+}
+
+.import-card {
+  padding: 13px 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--surface-1);
+}
+
+.import-card.has-errors {
+  border-color: rgba(220, 38, 38, 0.45);
+  border-left: 4px solid var(--danger);
+}
+
+.import-marks {
+  margin-left: auto;
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.import-prompt {
+  margin: 8px 0 6px;
+  white-space: pre-wrap;
+}
+
+.import-options {
+  margin: 0;
+  padding-left: 4px;
+  list-style: none;
+  font-size: 0.9rem;
+  color: var(--text-soft);
+}
+
+.import-options li {
+  padding: 2px 8px;
+  border-radius: var(--r-xs);
+}
+
+.import-options li.is-correct {
+  background: #f0fdf4;
+  color: #166534;
+  font-weight: 600;
+}
+
+.import-options li.is-correct::after {
+  content: "\2713  correct";
+  margin-left: 8px;
+  font-size: 0.8rem;
+}
+
+.import-answer {
+  color: #166534;
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.import-errors {
+  margin: 8px 0 0;
+  padding-left: 20px;
+  color: var(--danger);
+  font-size: 0.86rem;
+  font-weight: 600;
+}
+
+/* The right answer under each question in the analysis. */
+.analysis-answer {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0 0 10px;
+  padding: 7px 11px;
+  border: 1px solid rgba(22, 163, 74, 0.28);
+  border-radius: var(--r-sm);
+  background: #f0fdf4;
+  color: #14532d;
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.analysis-answer-label {
+  color: #15803d;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}

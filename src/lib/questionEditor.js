@@ -9,6 +9,7 @@ import { supabase } from "./supabase.js";
 import { countLabel, el, errorMessage, renderList, setBusy, setNotice, toast } from "./ui.js";
 import { mathText } from "./math.js";
 import { mathField, mathPalette } from "./mathField.js";
+import { bulkImportPanel } from "./bulkImport.js";
 
 const TYPES = [
   { value: "single", label: "Single choice", hint: "One correct option" },
@@ -96,7 +97,21 @@ function composer(testId, onSaved, nextPosition) {
   const state = { type: "single", options: [], answerKey: [] };
 
   const prompt = el("input", { type: "text", placeholder: "What is 7 x 8?" });
-  const points = el("input", { type: "number", value: "1", min: "1", step: "1" });
+  const points = el("input", { type: "number", value: "1", min: "1", step: "any" });
+  const bonusInput = el("input", { type: "checkbox" });
+  const bonusField = el("label", { className: "checkbox-field" }, [
+    bonusInput,
+    el("span", {
+      text: "Bonus question — its own section; adds to the score, never to the total",
+    }),
+  ]);
+
+  // A bonus question may be worth nothing; a normal one must be worth something.
+  bonusInput.addEventListener("change", () => {
+    points.min = bonusInput.checked ? "0" : "1";
+    if (bonusInput.checked && points.value === "1") points.value = "0";
+    if (!bonusInput.checked && Number(points.value) <= 0) points.value = "1";
+  });
   const textAnswer = el("input", { type: "text", placeholder: "Accepted answer" });
   const numberAnswer = el("input", { type: "text", inputMode: "decimal", placeholder: "e.g. 2.5" });
   const tolerance = el("input", { type: "number", value: "0", min: "0", step: "any" });
@@ -202,6 +217,15 @@ function composer(testId, onSaved, nextPosition) {
       if (!answerKey.length) return toast("Mark which option is correct.", "error");
     }
 
+    const isBonus = bonusInput.checked;
+    const marks = points.value.trim() === "" ? (isBonus ? 0 : 1) : Number(points.value);
+    if (!Number.isFinite(marks) || marks < 0 || (!isBonus && marks <= 0)) {
+      return toast(
+        isBonus ? "Bonus marks must be 0 or more." : "Marks must be more than 0.",
+        "error"
+      );
+    }
+
     const reset = setBusy(saveBtn, "Adding...");
     const { error } = await supabase.from("questions").insert([
       {
@@ -210,11 +234,13 @@ function composer(testId, onSaved, nextPosition) {
         type: state.type,
         options,
         answer_key: answerKey,
-        points: Number(points.value) || 1,
+        points: marks,
         position: nextPosition(),
         // Only numerical questions carry one; sent only then, so adding other
         // questions keeps working before migration 0017 is run.
         ...(state.type === "numerical" ? { tolerance: tol } : {}),
+        // Likewise sent only when set, so nothing breaks before 0019 is run.
+        ...(isBonus ? { is_bonus: true } : {}),
       },
     ]);
     reset();
@@ -224,16 +250,18 @@ function composer(testId, onSaved, nextPosition) {
       toast(
         error.code === "PGRST205"
           ? "Run supabase/migrations/0007_builtin_exams.sql to enable built-in tests."
-          : state.type === "numerical" && /tolerance|questions_type_check/.test(error.message)
-            ? "Run supabase/migrations/0017_cbt_numerical_and_shuffle.sql to enable numerical questions."
-            : errorMessage(error, "Could not add the question."),
+          : isBonus && /is_bonus|points_check/.test(error.message)
+            ? "Run supabase/migrations/0019_bonus_questions.sql to enable bonus questions."
+            : state.type === "numerical" && /tolerance|questions_type_check/.test(error.message)
+              ? "Run supabase/migrations/0017_cbt_numerical_and_shuffle.sql to enable numerical questions."
+              : errorMessage(error, "Could not add the question."),
         "error"
       );
       return;
     }
 
     clear(prompt);
-    points.value = "1";
+    points.value = isBonus ? "0" : "1";
     clear(textAnswer);
     numberAnswer.value = "";
     tolerance.value = "0";
@@ -253,6 +281,7 @@ function composer(testId, onSaved, nextPosition) {
       promptField,
       field("Type", typeSelect),
       field("Marks", points),
+      bonusField,
     ]),
     el("div", { className: "answer-area" }, [optionsBox, addOptionBtn, textField, numberField]),
     saveBtn,
@@ -292,13 +321,48 @@ function questionRow(question, reload) {
     await reload();
   });
 
+  // Moving a question between the main paper and the bonus section. A bonus
+  // question worth 0 marks has to be worth something to become a normal one.
+  const toggle = el("button", {
+    type: "button",
+    className: "edit-btn",
+    text: question.is_bonus ? "Make regular" : "Make bonus",
+  });
+  toggle.addEventListener("click", async () => {
+    const becomingBonus = !question.is_bonus;
+    const update = { is_bonus: becomingBonus };
+    if (!becomingBonus && !(Number(question.points) > 0)) update.points = 1;
+
+    const reset = setBusy(toggle, "Saving...");
+    const { error } = await supabase.from("questions").update(update).eq("id", question.id);
+    reset();
+
+    if (error) {
+      toast(
+        /is_bonus/.test(error.message)
+          ? "Run supabase/migrations/0019_bonus_questions.sql to enable bonus questions."
+          : errorMessage(error, "Could not change the question."),
+        "error"
+      );
+      return;
+    }
+    toast(becomingBonus ? "Moved to the bonus section." : "Moved to the main paper.", "success");
+    await reload();
+  });
+
+  const marks = Number(question.points) || 0;
+  const marksText = marks ? `${marks} ${marks === 1 ? "mark" : "marks"}` : "no marks";
+
   return el("article", { className: "test-card" }, [
     el("div", { className: "test-info" }, [
-      mathText("h4", {}, question.prompt),
-      el("p", { text: `${typeLabel} · ${question.points} mark(s)` }),
+      el("div", { className: "test-title-row" }, [
+        mathText("h4", {}, question.prompt),
+        ...(question.is_bonus ? [el("span", { className: "pill pill-bonus", text: "Bonus" })] : []),
+      ]),
+      el("p", { text: `${typeLabel} · ${marksText}` }),
       mathText("small", { className: "seb-note" }, `Answer: ${answerText || "not set"}`),
     ]),
-    el("div", { className: "admin-actions" }, [remove]),
+    el("div", { className: "admin-actions" }, [toggle, remove]),
   ]);
 }
 
@@ -337,8 +401,33 @@ export function openQuestionEditor(container, test, onBack) {
 
     const rows = data ?? [];
     questionCount = rows.length;
-    count.textContent = countLabel(rows.length, "question");
-    renderList(listBox, rows, question => questionRow(question, reload), "No questions yet.");
+
+    const main = rows.filter(question => !question.is_bonus);
+    const bonus = rows.filter(question => question.is_bonus);
+    const marks = main.reduce((sum, question) => sum + (Number(question.points) || 0), 0);
+    count.textContent =
+      `${countLabel(main.length, "question")} · ${marks} marks` +
+      (bonus.length ? ` · ${bonus.length} bonus` : "");
+
+    renderList(listBox, main, question => questionRow(question, reload), "No questions yet.");
+
+    // Bonus questions are their own section, as they are on the paper.
+    if (bonus.length) {
+      const bonusMarks = bonus.reduce((sum, question) => sum + (Number(question.points) || 0), 0);
+      const bonusList = el("div", {});
+      renderList(bonusList, bonus, question => questionRow(question, reload), "");
+      listBox.append(
+        el("div", { className: "section-title" }, [
+          el("h2", { text: "Bonus Questions" }),
+          el("span", {
+            text: bonusMarks
+              ? `up to ${bonusMarks} extra marks, capped at full marks`
+              : "no marks — for practice",
+          }),
+        ]),
+        bonusList
+      );
+    }
   }
 
   const backBtn = el("button", { type: "button", className: "secondary", text: "Back to tests" });
@@ -350,6 +439,7 @@ export function openQuestionEditor(container, test, onBack) {
       backBtn,
     ]),
     composer(test.id, reload, () => questionCount),
+    bulkImportPanel(test.id, reload, () => questionCount),
     el("div", { className: "section-title" }, [el("h2", { text: "Current Questions" }), count]),
     listBox
   );

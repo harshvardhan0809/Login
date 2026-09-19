@@ -68,6 +68,19 @@ export function distribution(results) {
   return bands;
 }
 
+/**
+ * Questions in paper order with the label a teacher sees: Q1, Q2 on the main
+ * paper, then B1, B2 for the bonus section, exactly as students saw them.
+ */
+export function labelQuestions(questions) {
+  const main = questions.filter(question => !question.is_bonus);
+  const bonus = questions.filter(question => question.is_bonus);
+  return [
+    ...main.map((question, index) => ({ ...question, label: `Q${index + 1}` })),
+    ...bonus.map((question, index) => ({ ...question, label: `B${index + 1}` })),
+  ];
+}
+
 /** Turns a stored answer key back into the text a teacher would recognise. */
 function describeAnswer(question, key) {
   if (question.type === "text" || question.type === "numerical") return key;
@@ -79,6 +92,38 @@ function describeAnswer(question, key) {
     .filter(Boolean);
 
   return labels.join(" + ") || "—";
+}
+
+/**
+ * The right answer, written out for a teacher.
+ *
+ *   single / multiple  "B) Newton", or "A) 2 + C) 11" -- letters in the order
+ *                      the options were written. With shuffled options each
+ *                      student saw different letters, so only the text is shown.
+ *   numerical          "9.8 (accepts 9.7 to 9.9)" when there is a tolerance
+ *   text               every accepted answer, "carbon dioxide / CO2"
+ */
+export function correctAnswer(question, { letters = true } = {}) {
+  const key = Array.isArray(question.answer_key) ? question.answer_key : [];
+  if (!key.length) return "not set";
+
+  if (question.type === "numerical") {
+    const value = key[0];
+    const tolerance = Number(question.tolerance) || 0;
+    if (!tolerance) return String(value);
+    const round = n => Number(n.toFixed(6));
+    return `${value} (accepts ${round(Number(value) - tolerance)} to ${round(Number(value) + tolerance)})`;
+  }
+
+  if (question.type === "text") return key.join(" / ");
+
+  const options = Array.isArray(question.options) ? question.options : [];
+  const parts = options
+    .map((option, index) => ({ option, letter: String.fromCharCode(65 + index) }))
+    .filter(({ option }) => key.includes(option.id))
+    .map(({ option, letter }) => (letters ? `${letter}) ${option.text}` : option.text));
+
+  return parts.join(" + ") || "not set";
 }
 
 /** Four bands, named the way a teacher would describe the question. */

@@ -163,6 +163,56 @@ on-screen keypad) and it is compared as a number, so `2.5`, `2.50` and `+2.5`
 all match. Set a **tolerance** to accept a range. Numerical questions need
 `0017_cbt_numerical_and_shuffle.sql`.
 
+**Bonus questions:** tick _Bonus question_ when adding one (or press _Make
+bonus_ on an existing one). Bonus questions sit in their own section after the
+main paper, numbered B1, B2…, and can be worth 0 marks or more. What they earn
+is added to the score but never to the total, so missing one costs nothing, and
+the score is capped at full marks. Needs `0019_bonus_questions.sql`.
+
+**Bulk import:** the question editor has a _Bulk Import_ box. Paste many
+questions in the layout below, press _Preview_ to see how each was read (any
+problem is shown in red and blocks the import), then _Add_. All are added in one
+go, or none are.
+
+```
+Q1. What is the SI unit of force?
+A) Joule
+B) Newton
+C) Watt
+D) Pascal
+Answer: B
+Marks: 4
+
+Q2. Which of these are prime numbers?
+A) 2
+B) 9
+C) 11
+D) 15
+Answer: A, C
+
+Q3. A car covers 120 km in 2 hours. Find its speed in km/h.
+Answer: 60
+
+Q4. Find $g$ in m/s$^2$, to one decimal place.
+Answer: 9.8 ± 0.1
+
+Q5. Name the gas plants absorb for photosynthesis.
+Answer: carbon dioxide
+
+Bonus: Who proposed $E = mc^2$?
+A) Newton
+B) Einstein
+C) Bohr
+D) Curie
+Answer: B
+Marks: 0
+```
+
+One answer letter makes a single-correct question and several a
+multiple-correct one; no options with a number makes a numerical question,
+with words a short answer. `Marks` defaults to 1 (0 for bonus); `Type:` and
+`Bonus: yes` override the guesses.
+
 **Shuffling** is per test: tick _Shuffle question order_ and/or _Shuffle answer
 options_. The order is worked out in the database from the student's email, so
 each student gets their own order and keeps it across reloads, and the
@@ -197,7 +247,7 @@ as plain text against what the student types, so it is not typeset. Keep those
 answers typeable — `x^2` or `3.14`, not `$x^{2}$`.
 
 Typesetting is [KaTeX](https://katex.org), bundled rather than loaded from a
-CDN — the lockdown browser's URL filter would block an external CDN, and an
+CDN — Safe Exam Browser's URL filter would block an external CDN, and an
 exam should not depend on someone else's uptime. It is split into its own
 chunk, so only the admin and exam pages download it.
 
