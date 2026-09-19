@@ -8,36 +8,94 @@
     <link rel="icon" href="/favicon.ico" />
     <link rel="stylesheet" href="/src/styles/style.css" />
   </head>
-  <body>
-    <main class="card dashboard-card">
-      <header class="page-header">
-        <div>
-          <p class="eyebrow" id="examSubject">Test</p>
-          <h1 id="examTitle">Loading...</h1>
-          <p class="sub" id="examMeta"></p>
+  <body class="cbt">
+    <header class="cbt-top">
+      <div class="cbt-heading">
+        <p class="cbt-subject" id="examSubject">Test</p>
+        <h1 class="cbt-title" id="examTitle">Loading...</h1>
+        <p class="cbt-meta" id="examMeta"></p>
+      </div>
+
+      <div class="cbt-top-right">
+        <p class="cbt-candidate" id="candidate"></p>
+        <div id="examClock" class="cbt-clock" role="timer" aria-live="off" hidden>
+          <span class="cbt-clock-label">Time Left</span>
+          <span class="cbt-clock-value" id="examClockValue">--:--</span>
+        </div>
+      </div>
+    </header>
+
+    <p id="timeWarning" class="cbt-warning" role="alert" hidden></p>
+
+    <div id="examState" class="cbt-state"></div>
+
+    <div id="examForm" class="cbt-layout" hidden>
+      <section class="cbt-question" aria-labelledby="qNumber">
+        <div class="cbt-qbar">
+          <h2 id="qNumber">Question 1</h2>
+          <div class="cbt-qinfo">
+            <span id="qType" class="cbt-chip"></span>
+            <span id="qMarks" class="cbt-chip cbt-chip-marks"></span>
+            <button
+              type="button"
+              id="paletteToggle"
+              class="cbt-palette-toggle"
+              aria-controls="palette"
+              aria-expanded="false"
+            >
+              Palette
+            </button>
+          </div>
         </div>
 
-        <div id="examClock" class="exam-clock" role="timer" aria-live="off" hidden>
-          <p class="exam-clock-label">Time remaining</p>
-          <p class="exam-clock-value" id="examClockValue">--:--</p>
+        <div id="qBody" class="cbt-qbody"></div>
+
+        <div class="cbt-actions">
+          <div class="cbt-actions-left">
+            <button type="button" id="markBtn" class="cbt-btn cbt-btn-review">
+              Mark for Review &amp; Next
+            </button>
+            <button type="button" id="clearBtn" class="cbt-btn cbt-btn-plain">
+              Clear Response
+            </button>
+          </div>
+          <div class="cbt-actions-right">
+            <button type="button" id="prevBtn" class="cbt-btn cbt-btn-plain">Previous</button>
+            <button type="button" id="saveNextBtn" class="cbt-btn cbt-btn-primary">
+              Save &amp; Next
+            </button>
+          </div>
         </div>
-      </header>
+      </section>
 
-      <div id="examState"></div>
-
-      <form id="examForm" hidden>
-        <div id="questionList"></div>
-
-        <div class="exam-footer">
-          <p class="sub" id="answeredCount"></p>
-          <button id="submitBtn" type="button">Submit Test</button>
+      <aside class="cbt-palette" id="palette" aria-label="Question palette">
+        <div class="cbt-palette-head">
+          <h2>Question Palette</h2>
+          <button
+            type="button"
+            id="paletteClose"
+            class="cbt-palette-close"
+            aria-label="Close palette"
+          >
+            &times;
+          </button>
         </div>
-      </form>
 
-      <div id="examResult" hidden></div>
+        <ul class="cbt-legend" id="legend"></ul>
 
+        <div class="cbt-grid" id="paletteGrid" role="list"></div>
+
+        <button type="button" id="submitBtn" class="cbt-btn cbt-btn-submit">Submit Test</button>
+      </aside>
+    </div>
+
+    <div id="examResult" class="cbt-state" hidden></div>
+
+    <div class="cbt-scrim" id="paletteScrim" hidden></div>
+
+    <div class="cbt-back">
       <button type="button" class="secondary" id="backBtn">Back to Dashboard</button>
-    </main>
+    </div>
 
     <script type="module" src="/src/pages/exam.js"></script>
   </body>

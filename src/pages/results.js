@@ -248,11 +248,9 @@ function exportCurrent() {
       ? "not required"
       : row.viaSeb === false
         ? "NOT in SEB"
-        : row.viaSeb === true && row.sebApi === false
-          ? "unconfirmed"
-          : row.viaSeb === true
-            ? "yes"
-            : "not recorded",
+        : row.viaSeb === true
+          ? "yes"
+          : "not recorded",
   ]);
 
   const slug = test.title

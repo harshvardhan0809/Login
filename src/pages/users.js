@@ -236,7 +236,13 @@ function resultRow(email, result, reload) {
       el("div", { className: "record-meta" }, meta),
     ]),
     el("div", { className: "score-badge", text: `${result.percentage}%` }),
-    el("div", { className: "admin-actions" }, [editBtn, resetBtn, deleteBtn]),
+    // A deleted test has no paper to retake and no test to re-mark against,
+    // so the only thing left to do with its mark is remove it.
+    el(
+      "div",
+      { className: "admin-actions" },
+      result.test_id ? [editBtn, resetBtn, deleteBtn] : [deleteBtn]
+    ),
   ]);
 
   editBtn.addEventListener("click", () => {
@@ -280,10 +286,17 @@ function resultRow(email, result, reload) {
     if (!confirm(`Delete this mark for ${email}? This cannot be undone.`)) return;
 
     const reset = setBusy(deleteBtn, "Deleting...");
-    const { error } = await supabase.rpc("admin_delete_result", {
-      p_test_id: result.test_id,
-      p_email: email,
-    });
+    // By the mark's own id: a mark from a deleted test has no test_id, and
+    // matching on (test_id, email) would find nothing.
+    const { error } = result.id
+      ? await supabase.rpc("admin_delete_result_by_id", { p_result_id: result.id })
+      : result.test_id
+        ? await supabase.rpc("admin_delete_result", { p_test_id: result.test_id, p_email: email })
+        : {
+            error: new Error(
+              "Run supabase/migrations/0018_delete_orphaned_results.sql to delete marks from deleted tests."
+            ),
+          };
     reset();
 
     if (error) return fail(error, "Could not delete that mark.");

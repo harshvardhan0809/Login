@@ -2788,3 +2788,914 @@ input[type="radio"] {
     flex: 1 1 100%;
   }
 }
+
+/* ===========================================================================
+   Computer-based test (exam.html)
+
+   The exam page leaves the portal's dark glass look behind on purpose. A test
+   is read for an hour or more, so it gets what competitive-exam software
+   settled on long ago: a white page, dark text, blue for anything clickable,
+   and a fixed palette colour code students already know. Everything below is
+   scoped to body.cbt and nothing here animates.
+   =========================================================================== */
+
+body.cbt {
+  color-scheme: light;
+
+  --bg: #eef2f7;
+  --surface-1: #ffffff;
+  --surface-2: #ffffff;
+  --surface-3: #f1f5f9;
+  --surface-solid: #ffffff;
+  --line: #dbe2ea;
+  --line-strong: #c3cdd9;
+  --highlight: transparent;
+  --text: #0f172a;
+  --text-soft: #334155;
+  --muted: #526071;
+  --faint: #6b7788;
+  --brand: #1d4ed8;
+  --brand-2: #1d4ed8;
+  --brand-ink: #ffffff;
+  --danger: #c81e1e;
+  --success: #15803d;
+  --ring: 0 0 0 3px rgba(29, 78, 216, 0.25);
+
+  --cbt-navy: #0b2a5b;
+  --cbt-blue: #1d4ed8;
+  --cbt-blue-dark: #1e3a8a;
+  --cbt-top-h: 76px;
+
+  /* Palette colours. Fixed hues, not theme tokens: they carry meaning. */
+  --st-grey: #e2e8f0;
+  --st-grey-ink: #334155;
+  --st-red: #d92d20;
+  --st-green: #16a34a;
+  --st-purple: #6d28d9;
+
+  display: block;
+  padding: 0;
+  gap: 0;
+  font-size: 16px;
+  letter-spacing: 0;
+  background: var(--bg);
+  color: var(--text);
+}
+
+body.cbt::before,
+body.cbt::after {
+  content: none;
+}
+
+/* --- top bar ------------------------------------------------------------- */
+
+.cbt-top {
+  position: sticky;
+  top: 0;
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  min-height: var(--cbt-top-h);
+  padding: 10px 24px;
+  background: var(--cbt-navy);
+  color: #ffffff;
+  border-bottom: 3px solid var(--cbt-blue);
+}
+
+.cbt-heading {
+  min-width: 0;
+}
+
+.cbt-subject {
+  margin: 0;
+  color: #bfdbfe;
+  font-size: 0.75rem;
+  font-weight: 650;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.cbt-title {
+  margin: 1px 0 0;
+  color: #ffffff;
+  font-size: 1.2rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cbt-meta {
+  margin: 2px 0 0;
+  color: #cbd5e1;
+  font-size: 0.8rem;
+}
+
+.cbt-top-right {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex: none;
+}
+
+.cbt-candidate {
+  margin: 0;
+  color: #dbeafe;
+  font-size: 0.85rem;
+  font-weight: 600;
+  max-width: 14rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cbt-clock {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 8.5rem;
+  padding: 6px 14px;
+  border-radius: 8px;
+  background: #ffffff;
+  color: var(--cbt-navy);
+}
+
+.cbt-clock-label {
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.cbt-clock-value {
+  font-size: 1.55rem;
+  font-weight: 750;
+  line-height: 1.15;
+  font-variant-numeric: tabular-nums;
+}
+
+.cbt-clock.is-warn {
+  background: #fef3c7;
+}
+
+.cbt-clock.is-warn .cbt-clock-value {
+  color: #92400e;
+}
+
+.cbt-clock.is-danger {
+  background: #fee2e2;
+}
+
+.cbt-clock.is-danger .cbt-clock-value {
+  color: var(--st-red);
+}
+
+.cbt-warning {
+  position: sticky;
+  top: var(--cbt-top-h);
+  z-index: 35;
+  margin: 0;
+  padding: 10px 24px;
+  background: #fef3c7;
+  border-bottom: 1px solid #f59e0b;
+  color: #78350f;
+  font-size: 0.92rem;
+  font-weight: 650;
+  text-align: center;
+}
+
+.cbt-warning.is-urgent {
+  background: #fee2e2;
+  border-bottom-color: var(--st-red);
+  color: #7f1d1d;
+}
+
+/* --- page layout --------------------------------------------------------- */
+
+.cbt-state {
+  max-width: 44rem;
+  margin: 32px auto;
+  padding: 0 16px;
+}
+
+.cbt-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 320px;
+  gap: 16px;
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: 16px;
+  align-items: start;
+}
+
+.cbt-back {
+  display: flex;
+  justify-content: center;
+  padding: 0 16px 32px;
+}
+
+/* --- question panel ------------------------------------------------------ */
+
+.cbt-question {
+  display: flex;
+  flex-direction: column;
+  min-height: calc(100vh - var(--cbt-top-h) - 32px);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #ffffff;
+}
+
+.cbt-qbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 14px 20px;
+  border-bottom: 1px solid var(--line);
+  background: #f8fafc;
+  border-radius: 10px 10px 0 0;
+  scroll-margin-top: calc(var(--cbt-top-h) + 8px);
+}
+
+.cbt-qbar h2 {
+  color: var(--cbt-navy);
+  font-size: 1.05rem;
+  font-weight: 700;
+  letter-spacing: 0;
+}
+
+.cbt-qinfo {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.cbt-chip {
+  padding: 4px 10px;
+  border: 1px solid #bfdbfe;
+  border-radius: 999px;
+  background: #eff6ff;
+  color: var(--cbt-blue-dark);
+  font-size: 0.78rem;
+  font-weight: 650;
+}
+
+.cbt-chip-marks {
+  border-color: var(--line);
+  background: #ffffff;
+  color: var(--text-soft);
+}
+
+.cbt-qbody {
+  flex: 1 1 auto;
+  padding: 22px 24px 28px;
+}
+
+.cbt-qlabel {
+  margin: 0 0 10px;
+  color: var(--cbt-blue);
+  font-size: 0.82rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.cbt-prompt {
+  margin-bottom: 22px;
+  color: var(--text);
+  font-size: 1.08rem;
+  line-height: 1.7;
+  overflow-wrap: anywhere;
+}
+
+.cbt-prompt .math-display {
+  margin: 12px 0;
+}
+
+.cbt-options {
+  display: grid;
+  gap: 10px;
+}
+
+.cbt-option {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-height: 56px;
+  padding: 12px 16px;
+  border: 1.5px solid var(--line-strong);
+  border-radius: 8px;
+  background: #ffffff;
+  color: var(--text);
+  font-size: 1rem;
+  font-weight: 450;
+  cursor: pointer;
+}
+
+.cbt-option:hover {
+  border-color: #93c5fd;
+  background: #f8fbff;
+}
+
+.cbt-option:has(.cbt-option-input:checked) {
+  border-color: var(--cbt-blue);
+  background: #eff6ff;
+}
+
+.cbt-option:has(.cbt-option-input:focus-visible) {
+  box-shadow: var(--ring);
+}
+
+.cbt-option-input {
+  width: 20px;
+  height: 20px;
+  accent-color: var(--cbt-blue);
+}
+
+.cbt-option-letter {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border: 1.5px solid var(--line-strong);
+  border-radius: 50%;
+  color: var(--text-soft);
+  font-weight: 700;
+}
+
+.cbt-option:has(.cbt-option-input:checked) .cbt-option-letter {
+  border-color: var(--cbt-blue);
+  background: var(--cbt-blue);
+  color: #ffffff;
+}
+
+.cbt-option-text {
+  min-width: 0;
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+}
+
+.cbt-hint {
+  margin-top: 12px;
+  color: var(--muted);
+  font-size: 0.88rem;
+}
+
+/* Numerical answer box and keypad. */
+.cbt-numeric {
+  max-width: 22rem;
+}
+
+.cbt-numeric-label {
+  margin-bottom: 8px;
+  color: var(--text-soft);
+  font-size: 0.9rem;
+  font-weight: 650;
+}
+
+body.cbt .cbt-answer-box {
+  max-width: 22rem;
+  padding: 12px 14px;
+  border: 1.5px solid var(--line-strong);
+  border-radius: 8px;
+  background: #ffffff;
+  color: var(--text);
+  font-size: 1.15rem;
+  font-variant-numeric: tabular-nums;
+}
+
+body.cbt .cbt-answer-box:focus {
+  border-color: var(--cbt-blue);
+  background: #ffffff;
+}
+
+.cbt-keypad {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin-top: 12px;
+}
+
+body.cbt .cbt-key {
+  min-height: 46px;
+  padding: 8px;
+  border: 1px solid var(--line-strong);
+  border-radius: 6px;
+  background: #f8fafc;
+  box-shadow: none;
+  color: var(--text);
+  font-size: 1.05rem;
+  font-weight: 650;
+}
+
+body.cbt .cbt-key:hover:not(:disabled) {
+  background: #eff6ff;
+  border-color: #93c5fd;
+  box-shadow: none;
+}
+
+.cbt-key-wide {
+  grid-column: 1 / -1;
+}
+
+/* --- action bar ---------------------------------------------------------- */
+
+.cbt-actions {
+  position: sticky;
+  bottom: 0;
+  z-index: 20;
+  display: flex;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 12px 16px;
+  border-top: 1px solid var(--line);
+  border-radius: 0 0 10px 10px;
+  background: #f8fafc;
+}
+
+.cbt-actions-left,
+.cbt-actions-right {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+/* One button family for the paper. Resets the portal's gradient buttons and
+   their hover lift, which read as decoration here. */
+body.cbt .cbt-btn {
+  min-height: 46px;
+  padding: 10px 18px;
+  border: 1.5px solid transparent;
+  border-radius: 6px;
+  box-shadow: none;
+  font-size: 0.95rem;
+  font-weight: 650;
+  letter-spacing: 0;
+  transition:
+    background var(--fast),
+    border-color var(--fast);
+}
+
+body.cbt .cbt-btn:hover:not(:disabled) {
+  transform: none;
+  box-shadow: none;
+}
+
+body.cbt .cbt-btn-primary {
+  background: var(--cbt-blue);
+  color: #ffffff;
+}
+
+body.cbt .cbt-btn-primary:hover:not(:disabled) {
+  background: var(--cbt-blue-dark);
+}
+
+body.cbt .cbt-btn-review {
+  background: var(--st-purple);
+  color: #ffffff;
+}
+
+body.cbt .cbt-btn-review:hover:not(:disabled) {
+  background: #5b21b6;
+}
+
+body.cbt .cbt-btn-plain {
+  border-color: var(--line-strong);
+  background: #ffffff;
+  color: var(--text);
+}
+
+body.cbt .cbt-btn-plain:hover:not(:disabled) {
+  border-color: var(--cbt-blue);
+  color: var(--cbt-blue-dark);
+}
+
+body.cbt .cbt-btn-submit {
+  background: var(--st-green);
+  color: #ffffff;
+}
+
+body.cbt .cbt-btn-submit:hover:not(:disabled) {
+  background: #15803d;
+}
+
+/* --- palette ------------------------------------------------------------- */
+
+.cbt-palette {
+  position: sticky;
+  top: calc(var(--cbt-top-h) + 16px);
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  max-height: calc(100vh - var(--cbt-top-h) - 32px);
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #ffffff;
+  overflow: auto;
+}
+
+.cbt-palette-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.cbt-palette-head h2 {
+  color: var(--cbt-navy);
+  font-size: 1rem;
+  font-weight: 700;
+  letter-spacing: 0;
+}
+
+body.cbt .cbt-palette-close,
+body.cbt .cbt-palette-toggle {
+  display: none;
+}
+
+.cbt-legend {
+  display: grid;
+  gap: 7px;
+  margin: 0;
+  padding: 12px;
+  border-radius: 8px;
+  background: #f8fafc;
+  list-style: none;
+  font-size: 0.8rem;
+  color: var(--text-soft);
+}
+
+.cbt-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+
+.cbt-swatch {
+  position: relative;
+  flex: none;
+  display: inline-grid;
+  place-items: center;
+  min-width: 28px;
+  height: 26px;
+  padding: 0 5px;
+  border-radius: 5px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.cbt-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(44px, 1fr));
+  gap: 8px;
+}
+
+body.cbt .cbt-cell {
+  position: relative;
+  min-height: 44px;
+  padding: 0;
+  border: 1.5px solid transparent;
+  border-radius: 6px;
+  box-shadow: none;
+  font-size: 0.95rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+body.cbt .cbt-cell:hover:not(:disabled) {
+  transform: none;
+  box-shadow: none;
+  filter: brightness(0.95);
+}
+
+body.cbt .cbt-cell.is-current {
+  outline: 3px solid var(--cbt-blue);
+  outline-offset: 2px;
+}
+
+/* The status colours, shared by palette cells and legend swatches. */
+body.cbt .st-not-visited {
+  border-color: #cbd5e1;
+  background: var(--st-grey);
+  color: var(--st-grey-ink);
+}
+
+body.cbt .st-not-answered {
+  background: var(--st-red);
+  color: #ffffff;
+}
+
+body.cbt .st-answered {
+  background: var(--st-green);
+  color: #ffffff;
+}
+
+body.cbt .st-marked,
+body.cbt .st-answered-marked {
+  background: var(--st-purple);
+  color: #ffffff;
+  border-radius: 50%;
+}
+
+/* Answered and marked: purple with a green tick, so it reads as both. */
+body.cbt .st-answered-marked::after {
+  content: "\2713";
+  position: absolute;
+  right: -5px;
+  bottom: -5px;
+  display: grid;
+  place-items: center;
+  width: 17px;
+  height: 17px;
+  border: 2px solid #ffffff;
+  border-radius: 50%;
+  background: var(--st-green);
+  color: #ffffff;
+  font-size: 0.6rem;
+  line-height: 1;
+}
+
+body.cbt .cbt-cell.st-marked,
+body.cbt .cbt-cell.st-answered-marked {
+  border-radius: 50%;
+  aspect-ratio: 1;
+  min-height: 0;
+}
+
+.cbt-palette .cbt-btn-submit {
+  width: 100%;
+  margin-top: auto;
+}
+
+.cbt-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 55;
+  background: rgba(15, 23, 42, 0.45);
+}
+
+/* --- confirmation dialog ------------------------------------------------- */
+
+body.cbt .modal-backdrop {
+  background: rgba(15, 23, 42, 0.55);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  animation: none;
+}
+
+body.cbt .modal {
+  border-color: var(--line);
+  border-radius: 10px;
+  box-shadow: 0 20px 50px -20px rgba(15, 23, 42, 0.45);
+  animation: none;
+}
+
+body.cbt .modal-title {
+  color: var(--cbt-navy);
+}
+
+.cbt-summary {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.92rem;
+}
+
+.cbt-summary td {
+  padding: 7px 4px;
+  border-bottom: 1px solid var(--line);
+  color: var(--text-soft);
+}
+
+.cbt-summary td:first-child {
+  width: 44px;
+}
+
+.cbt-dialog-warn,
+.cbt-dialog-note {
+  margin-top: 14px;
+  font-size: 0.92rem;
+}
+
+.cbt-dialog-warn {
+  padding: 10px 12px;
+  border: 1px solid #fca5a5;
+  border-radius: 6px;
+  background: #fef2f2;
+  color: #991b1b;
+  font-weight: 650;
+}
+
+.cbt-dialog-note {
+  color: var(--muted);
+}
+
+body.cbt .modal-actions {
+  justify-content: flex-end;
+}
+
+body.cbt .modal-actions .cbt-btn {
+  flex: 0 1 auto;
+}
+
+/* --- the portal's own panels, redrawn for a light page -------------------- */
+
+body.cbt .notice {
+  background: #ffffff;
+  color: var(--text-soft);
+}
+
+body.cbt .notice-error {
+  border-color: #fca5a5;
+  background: #fef2f2;
+  color: #991b1b;
+}
+
+body.cbt .state-panel,
+body.cbt .result-panel {
+  border-color: var(--line);
+  background: #ffffff;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.08);
+}
+
+body.cbt .state-icon,
+body.cbt .state-hint {
+  background: #f8fafc;
+}
+
+body.cbt .result-score {
+  color: var(--cbt-navy);
+}
+
+body.cbt button.block,
+body.cbt .state-panel button {
+  background: var(--cbt-blue);
+  color: #ffffff;
+  box-shadow: none;
+}
+
+body.cbt button.block:hover:not(:disabled) {
+  background: var(--cbt-blue-dark);
+  transform: none;
+  box-shadow: none;
+}
+
+body.cbt .toast {
+  background: #ffffff;
+  box-shadow: 0 10px 30px -12px rgba(15, 23, 42, 0.35);
+  color: var(--text);
+}
+
+/* --- tablet and phone ---------------------------------------------------- */
+
+@media (max-width: 960px) {
+  .cbt-layout {
+    grid-template-columns: minmax(0, 1fr);
+    padding: 10px;
+  }
+
+  /* The palette becomes a drawer from the right, opened from the question bar. */
+  .cbt-palette {
+    position: fixed;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 60;
+    width: min(88vw, 340px);
+    max-height: none;
+    border-radius: 0;
+    transform: translateX(100%);
+    visibility: hidden;
+  }
+
+  .cbt-palette.is-open {
+    transform: none;
+    visibility: visible;
+  }
+
+  body.cbt .cbt-palette-close {
+    display: grid;
+    place-items: center;
+    width: 40px;
+    height: 40px;
+    padding: 0;
+    border: 1px solid var(--line-strong);
+    border-radius: 6px;
+    background: #ffffff;
+    box-shadow: none;
+    color: var(--text);
+    font-size: 1.4rem;
+  }
+
+  body.cbt .cbt-palette-toggle {
+    display: inline-flex;
+    align-items: center;
+    min-height: 36px;
+    padding: 6px 14px;
+    border-radius: 6px;
+    background: var(--cbt-blue);
+    box-shadow: none;
+    color: #ffffff;
+    font-size: 0.85rem;
+  }
+
+  .cbt-question {
+    min-height: calc(100vh - var(--cbt-top-h) - 20px);
+  }
+}
+
+@media (max-width: 640px) {
+  :root body.cbt {
+    --cbt-top-h: 64px;
+  }
+
+  .cbt-top {
+    padding: 8px 14px;
+  }
+
+  .cbt-title {
+    font-size: 1rem;
+  }
+
+  .cbt-meta,
+  .cbt-candidate {
+    display: none;
+  }
+
+  .cbt-clock {
+    min-width: 0;
+    padding: 4px 10px;
+  }
+
+  .cbt-clock-value {
+    font-size: 1.2rem;
+  }
+
+  .cbt-qbar {
+    padding: 12px 14px;
+  }
+
+  .cbt-qbody {
+    padding: 16px 14px 22px;
+  }
+
+  .cbt-prompt {
+    font-size: 1rem;
+  }
+
+  .cbt-actions {
+    padding: 10px;
+  }
+
+  /* Four buttons in two even rows, each big enough for a thumb. */
+  .cbt-actions-left,
+  .cbt-actions-right {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    width: 100%;
+  }
+
+  body.cbt .cbt-btn {
+    padding: 10px 8px;
+    font-size: 0.86rem;
+  }
+
+  .cbt-numeric,
+  body.cbt .cbt-answer-box {
+    max-width: none;
+  }
+}
+
+body.cbt .cbt-swatch.st-marked,
+body.cbt .cbt-swatch.st-answered-marked {
+  min-width: 26px;
+  width: 26px;
+  padding: 0;
+}
+
+/* Holds loading and dead-end messages; takes no room once the paper is up. */
+.cbt-state:empty {
+  display: none;
+}
+
+/* In the legend the tick sits beside the count rather than over it. */
+body.cbt .cbt-swatch.st-answered-marked::after {
+  right: -8px;
+  bottom: -6px;
+  width: 14px;
+  height: 14px;
+  font-size: 0.5rem;
+}
+
+body.cbt .cbt-legend-item .cbt-swatch.st-answered-marked,
+body.cbt .cbt-summary .cbt-swatch.st-answered-marked {
+  margin-right: 6px;
+}
