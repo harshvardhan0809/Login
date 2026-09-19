@@ -1,5 +1,4 @@
 /** Small DOM + feedback helpers shared by every page. */
-import { reveal } from "./reveal.js";
 
 /** Creates an element: el("h4", { className: "title", text: "Hi" }, [child]) */
 export function el(tag, props = {}, children = []) {
@@ -77,10 +76,6 @@ export function renderList(container, items, renderItem, emptyMessage) {
   }
 
   container.replaceChildren(...items.map(renderItem));
-
-  // Every list on every page animates in from one place, rather than each
-  // caller remembering to ask for it.
-  reveal(container.children);
 }
 
 /** Simple pluralising counter: countLabel(1, "test") -> "1 test". */
@@ -117,8 +112,6 @@ export function wireTabs(tablist) {
   const panelFor = tab => document.getElementById(`panel-${tab.dataset.tab}`);
 
   function select(tab) {
-    let shown = null;
-
     tabs.forEach(other => {
       const active = other === tab;
       other.setAttribute("aria-selected", String(active));
@@ -128,14 +121,7 @@ export function wireTabs(tablist) {
       if (!panel) return;
 
       panel.hidden = !active;
-      if (active) shown = panel;
     });
-
-    // A list rendered into a hidden panel was registered for reveal while it
-    // had no size, so it may still be sitting at opacity 0. Re-registering it
-    // now that the panel is on screen guarantees it appears — invisible
-    // content is a far worse failure than a missed animation.
-    if (shown) reveal(shown.querySelectorAll(".reveal:not(.reveal-in)"));
 
     tab.focus();
   }

@@ -1,70 +1,64 @@
 /* ===========================================================================
    Exam Portal — design system.
 
-   One stylesheet for every page. It is organised as tokens first, then the
-   primitives those tokens build (type, buttons, fields), then the components
-   made of primitives, then the two pages complex enough to need their own
-   rules — the exam paper and the results analysis.
+   One stylesheet for every page: tokens first, then primitives (type,
+   buttons, fields), then components, then the pages that need their own rules.
 
-   The look is built from three ideas:
-
-     1. Depth instead of outlines. Surfaces sit on a dark ground and separate
-        by luminance and a hairline, not by heavy borders.
-     2. One accent, used sparingly. Teal marks the single most important
-        action on a view; amber and rose are reserved for warning and failure,
-        so they still mean something when they appear.
-     3. Motion that confirms, never decorates. Every transition is under
-        200ms and every one of them is switched off under
-        prefers-reduced-motion.
+   The look follows the exam screen: a light grey page, white panels, dark
+   text, a dark-blue top bar, and blue for anything clickable. Amber and red
+   are kept for warnings and failures so they still mean something. Nothing
+   moves unless it is reporting something: no glows, no lifts, no scroll
+   animations.
    =========================================================================== */
 
 :root {
-  color-scheme: dark;
+  color-scheme: light;
 
-  /* Surfaces, in the order they stack. Alpha rather than solid colour so the
-     background gradient shows through and panels read as glass. */
-  --bg: #060910;
-  --surface-1: rgba(20, 27, 45, 0.78);
-  --surface-2: rgba(30, 40, 63, 0.62);
-  --surface-3: rgba(44, 57, 86, 0.5);
-  --surface-solid: #141b2d;
+  /* Surfaces, in the order they stack: the grey page, white panels on it,
+     and a faint well inside a panel for nested rows. */
+  --bg: #eef2f7;
+  --surface-1: #ffffff;
+  --surface-2: #ffffff;
+  --surface-3: #f1f5f9;
+  --surface-solid: #ffffff;
+  --well: #f8fafc;
 
-  /* Hairlines and the top-edge highlight that gives a panel its lit edge. */
-  --line: rgba(148, 163, 184, 0.13);
-  --line-strong: rgba(148, 163, 184, 0.26);
-  --highlight: rgba(255, 255, 255, 0.07);
+  --line: #dbe2ea;
+  --line-strong: #c3cdd9;
+  --highlight: transparent;
 
-  /* Text, from loudest to quietest. Four steps is enough for any hierarchy;
-     a fifth only ever gets misused. */
-  --text: #eef2fb;
-  --text-soft: #c5cde2;
-  --muted: #8c97b2;
-  --faint: #68728c;
+  --text: #0f172a;
+  --text-soft: #334155;
+  --muted: #526071;
+  --faint: #6b7788;
 
-  --brand: #5eead4;
-  --brand-2: #38bdf8;
-  --brand-deep: #0f766e;
-  --brand-ink: #04221f;
-  --accent: #fbbf24;
-  --danger: #fb7185;
-  --success: #34d399;
-  --info: #818cf8;
+  /* Blue for anything clickable, dark blue for structure: the same pair the
+     exam screen uses, so moving between them feels like one product. */
+  --brand: #1d4ed8;
+  --brand-2: #2563eb;
+  --brand-deep: #1e3a8a;
+  --brand-ink: #ffffff;
+  --navy: #0b2a5b;
+  --accent: #b45309;
+  --danger: #c81e1e;
+  --success: #15803d;
+  --info: #4f46e5;
 
   --r-xs: 6px;
-  --r-sm: 10px;
-  --r-md: 14px;
-  --r-lg: 20px;
-  --r-xl: 28px;
+  --r-sm: 8px;
+  --r-md: 10px;
+  --r-lg: 12px;
+  --r-xl: 14px;
   --r-pill: 999px;
 
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
-  --shadow-md: 0 10px 30px -12px rgba(0, 0, 0, 0.6);
-  --shadow-lg: 0 30px 80px -24px rgba(0, 0, 0, 0.75);
-  --ring: 0 0 0 3px rgba(94, 234, 212, 0.28);
+  --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.06);
+  --shadow-md: 0 4px 14px -6px rgba(15, 23, 42, 0.18);
+  --shadow-lg: 0 18px 40px -18px rgba(15, 23, 42, 0.28);
+  --ring: 0 0 0 3px rgba(29, 78, 216, 0.25);
 
   --ease: cubic-bezier(0.32, 0.72, 0, 1);
-  --fast: 140ms var(--ease);
-  --slow: 240ms var(--ease);
+  --fast: 120ms ease;
+  --slow: 200ms ease;
 
   --font: "Inter", "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
   --mono: ui-monospace, "SF Mono", "Cascadia Code", "Roboto Mono", Menlo, monospace;
@@ -96,35 +90,15 @@ body {
   font-family: var(--font);
   font-size: 15px;
   line-height: 1.55;
-  letter-spacing: -0.006em;
+  letter-spacing: 0;
   background-color: var(--bg);
   -webkit-font-smoothing: antialiased;
 }
 
-/* The ground is three soft lights over near-black, fixed so it does not slide
-   under the content while scrolling. */
-body::before {
-  content: "";
-  position: fixed;
-  inset: 0;
-  z-index: -2;
-  background:
-    radial-gradient(60rem 40rem at 12% -8%, rgba(56, 189, 248, 0.16), transparent 60%),
-    radial-gradient(50rem 34rem at 92% 2%, rgba(94, 234, 212, 0.13), transparent 58%),
-    radial-gradient(46rem 40rem at 60% 108%, rgba(129, 140, 248, 0.12), transparent 60%),
-    linear-gradient(168deg, #070c17 0%, #0a1020 48%, #080b14 100%);
-}
-
-/* A very fine grain over the gradient. Without it the large flat areas band
-   visibly on 8-bit panels, which is the fastest way to look cheap. */
-body::after {
-  content: "";
-  position: fixed;
-  inset: 0;
-  z-index: -1;
-  pointer-events: none;
-  opacity: 0.035;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)'/%3E%3C/svg%3E");
+/* Signed-in pages: the top bar spans the window and content sits under it. */
+body.app {
+  display: block;
+  padding: 0;
 }
 
 a {
@@ -145,7 +119,7 @@ a:hover {
 }
 
 ::selection {
-  background: rgba(94, 234, 212, 0.28);
+  background: rgba(29, 78, 216, 0.28);
 }
 
 /* --- typography ---------------------------------------------------------- */
@@ -155,8 +129,9 @@ h2,
 h3,
 h4 {
   margin: 0;
-  font-weight: 650;
-  letter-spacing: -0.022em;
+  color: var(--navy);
+  font-weight: 700;
+  letter-spacing: -0.01em;
   line-height: 1.2;
 }
 
@@ -224,26 +199,7 @@ small {
   border: 1px solid var(--line);
   border-radius: var(--r-xl);
   background: var(--surface-1);
-  box-shadow: var(--shadow-lg);
-  backdrop-filter: blur(26px) saturate(140%);
-  -webkit-backdrop-filter: blur(26px) saturate(140%);
-}
-
-/* The lit top edge. A 1px gradient rule is what separates "dark box" from
-   "pane of glass", and it costs nothing. */
-.card::before {
-  content: "";
-  position: absolute;
-  inset: 0 0 auto;
-  height: 1px;
-  border-radius: var(--r-xl) var(--r-xl) 0 0;
-  background: linear-gradient(
-    90deg,
-    transparent,
-    var(--highlight) 30%,
-    var(--highlight) 70%,
-    transparent
-  );
+  box-shadow: var(--shadow-md);
 }
 
 .auth-card {
@@ -306,7 +262,6 @@ small {
   height: 8px;
   border-radius: 50%;
   background: var(--brand);
-  box-shadow: 0 0 12px var(--brand);
 }
 
 /* --- buttons ------------------------------------------------------------- */
@@ -340,17 +295,13 @@ button {
   width: auto;
   padding: 12px 18px;
   color: var(--brand-ink);
-  background: linear-gradient(180deg, #7df0dd, var(--brand) 55%, #34d6bd);
-  box-shadow:
-    0 1px 0 rgba(255, 255, 255, 0.3) inset,
-    0 10px 24px -12px rgba(94, 234, 212, 0.7);
+  background: var(--brand);
+  box-shadow: none;
 }
 
-button:hover:not(:disabled) {
-  transform: translateY(-1px);
-  box-shadow:
-    0 1px 0 rgba(255, 255, 255, 0.4) inset,
-    0 16px 32px -14px rgba(94, 234, 212, 0.85);
+/* Zero specificity, so any button with its own look keeps its own hover. */
+:where(button:hover:not(:disabled)) {
+  background: var(--brand-deep);
 }
 
 button:active:not(:disabled) {
@@ -413,13 +364,13 @@ button.secondary:hover:not(:disabled),
 
 .delete-btn {
   color: var(--danger);
-  background: rgba(251, 113, 133, 0.1);
-  border-color: rgba(251, 113, 133, 0.28);
+  background: rgba(220, 38, 38, 0.1);
+  border-color: rgba(220, 38, 38, 0.28);
 }
 
 .delete-btn:hover:not(:disabled) {
   color: #fff;
-  background: rgba(251, 113, 133, 0.85);
+  background: rgba(220, 38, 38, 0.85);
   border-color: transparent;
 }
 
@@ -451,15 +402,14 @@ button.secondary:hover:not(:disabled),
   gap: 7px;
   padding: 10px 20px;
   color: var(--brand-ink);
-  background: linear-gradient(180deg, #7df0dd, var(--brand) 55%, #34d6bd);
+  background: var(--brand);
   text-decoration: none;
   font-size: 0.86rem;
-  box-shadow: 0 10px 24px -14px rgba(94, 234, 212, 0.8);
 }
 
 .start-btn:hover {
   color: var(--brand-ink);
-  transform: translateY(-1px);
+  transform: none;
 }
 
 .actions {
@@ -491,6 +441,14 @@ button.secondary:hover:not(:disabled),
   width: auto;
 }
 
+/* A secondary action in a row of compact buttons matches their size. */
+.admin-actions button.secondary,
+.header-actions button.secondary {
+  padding: 8px 14px;
+  font-size: 0.82rem;
+  border-radius: var(--r-xs);
+}
+
 /* --- fields -------------------------------------------------------------- */
 
 .form-stack {
@@ -520,7 +478,7 @@ textarea {
   color: var(--text);
   font: inherit;
   font-size: 0.92rem;
-  background: rgba(9, 13, 24, 0.6);
+  background: var(--well);
   border: 1px solid var(--line-strong);
   border-radius: var(--r-sm);
   transition:
@@ -558,7 +516,7 @@ select:focus,
 textarea:focus {
   outline: none;
   border-color: var(--brand);
-  background: rgba(9, 13, 24, 0.85);
+  background: var(--well);
   box-shadow: var(--ring);
 }
 
@@ -582,7 +540,7 @@ input[type="radio"] {
   align-items: center;
   gap: 10px;
   padding-left: 13px;
-  background: rgba(9, 13, 24, 0.6);
+  background: var(--well);
   border: 1px solid var(--line-strong);
   border-radius: var(--r-sm);
   transition:
@@ -644,10 +602,10 @@ input[type="radio"] {
   display: flex;
   gap: 4px;
   margin-bottom: 24px;
-  padding: 5px;
+  padding: 0 6px;
   border: 1px solid var(--line);
   border-radius: var(--r-md);
-  background: rgba(9, 13, 24, 0.5);
+  background: var(--surface-1);
   overflow-x: auto;
   scrollbar-width: none;
 }
@@ -659,28 +617,26 @@ input[type="radio"] {
 .tab {
   flex: 1 0 auto;
   width: auto;
-  padding: 9px 16px;
+  padding: 14px 16px 12px;
   color: var(--muted);
   background: none;
   border: none;
-  border-radius: var(--r-sm);
+  border-bottom: 3px solid transparent;
+  border-radius: 0;
   box-shadow: none;
-  font-size: 0.85rem;
-  font-weight: 550;
+  font-size: 0.9rem;
+  font-weight: 650;
   white-space: nowrap;
 }
 
 .tab:hover:not(.tab-active) {
-  color: var(--text-soft);
-  background: var(--surface-2);
-  transform: none;
+  color: var(--brand);
+  background: none;
 }
 
 .tab-active {
-  color: var(--text);
-  background: linear-gradient(180deg, var(--surface-3), var(--surface-2));
-  border: 1px solid var(--line-strong);
-  box-shadow: var(--shadow-sm);
+  color: var(--brand);
+  border-bottom-color: var(--brand);
 }
 
 /* --- stat tiles ---------------------------------------------------------- */
@@ -715,10 +671,7 @@ input[type="radio"] {
   font-weight: 680;
   letter-spacing: -0.035em;
   font-variant-numeric: tabular-nums;
-  background: linear-gradient(150deg, var(--text), var(--brand));
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
+  color: var(--navy);
 }
 
 /* --- generic list cards -------------------------------------------------- */
@@ -806,8 +759,8 @@ input[type="radio"] {
   flex: none;
   padding: 7px 13px;
   border-radius: var(--r-pill);
-  background: rgba(94, 234, 212, 0.13);
-  border: 1px solid rgba(94, 234, 212, 0.26);
+  background: rgba(29, 78, 216, 0.13);
+  border: 1px solid rgba(29, 78, 216, 0.26);
   color: var(--brand);
   font-size: 0.84rem;
   font-weight: 600;
@@ -838,7 +791,7 @@ input[type="radio"] {
 }
 
 .pill-pinned {
-  background: rgba(251, 191, 36, 0.14);
+  background: rgba(217, 119, 6, 0.14);
   color: var(--accent);
 }
 
@@ -848,12 +801,12 @@ input[type="radio"] {
 }
 
 .pill-live {
-  background: rgba(52, 211, 153, 0.15);
+  background: rgba(22, 163, 74, 0.15);
   color: var(--success);
 }
 
 .pill-closed {
-  background: rgba(251, 113, 133, 0.15);
+  background: rgba(220, 38, 38, 0.15);
   color: var(--danger);
 }
 
@@ -867,17 +820,17 @@ input[type="radio"] {
 }
 
 .due-overdue {
-  background: rgba(251, 113, 133, 0.14);
+  background: rgba(220, 38, 38, 0.14);
   color: var(--danger);
 }
 
 .due-soon {
-  background: rgba(251, 191, 36, 0.14);
+  background: rgba(217, 119, 6, 0.14);
   color: var(--accent);
 }
 
 .due-ok {
-  background: rgba(94, 234, 212, 0.12);
+  background: rgba(29, 78, 216, 0.12);
   color: var(--brand);
 }
 
@@ -918,13 +871,13 @@ input[type="radio"] {
 }
 
 .notice-urgent {
-  background: linear-gradient(100deg, rgba(251, 113, 133, 0.09), var(--surface-2) 42%);
-  border-color: rgba(251, 113, 133, 0.24);
+  background: #fef6f6;
+  border-color: rgba(220, 38, 38, 0.24);
 }
 
 .notice-pinned {
-  border-color: rgba(251, 191, 36, 0.26);
-  background: linear-gradient(100deg, rgba(251, 191, 36, 0.08), var(--surface-2) 42%);
+  border-color: rgba(217, 119, 6, 0.26);
+  background: #fffbf2;
 }
 
 .notice-head {
@@ -979,12 +932,12 @@ input[type="radio"] {
 }
 
 .pill-urgent {
-  background: rgba(251, 113, 133, 0.16);
+  background: rgba(220, 38, 38, 0.16);
   color: var(--danger);
 }
 
 .pill-high {
-  background: rgba(251, 191, 36, 0.16);
+  background: rgba(217, 119, 6, 0.16);
   color: var(--accent);
 }
 
@@ -1002,26 +955,20 @@ input[type="radio"] {
   flex-wrap: wrap;
   padding: 18px 22px;
   margin-bottom: 22px;
-  border: 1px solid rgba(94, 234, 212, 0.3);
+  border: 1px solid rgba(29, 78, 216, 0.3);
   border-radius: var(--r-lg);
-  background:
-    radial-gradient(30rem 12rem at 8% 0%, rgba(94, 234, 212, 0.16), transparent 70%),
-    var(--surface-2);
+  background: linear-gradient(rgba(29, 78, 216, 0.05), rgba(29, 78, 216, 0.05)), var(--surface-2);
   overflow: hidden;
 }
 
 .exam-alert-live {
-  border-color: rgba(52, 211, 153, 0.4);
-  background:
-    radial-gradient(30rem 12rem at 8% 0%, rgba(52, 211, 153, 0.2), transparent 70%),
-    var(--surface-2);
+  border-color: rgba(22, 163, 74, 0.4);
+  background: linear-gradient(rgba(22, 163, 74, 0.05), rgba(22, 163, 74, 0.05)), var(--surface-2);
 }
 
 .exam-alert-soon {
-  border-color: rgba(251, 191, 36, 0.36);
-  background:
-    radial-gradient(30rem 12rem at 8% 0%, rgba(251, 191, 36, 0.16), transparent 70%),
-    var(--surface-2);
+  border-color: rgba(217, 119, 6, 0.36);
+  background: linear-gradient(rgba(217, 119, 6, 0.05), rgba(217, 119, 6, 0.05)), var(--surface-2);
 }
 
 .exam-alert-main {
@@ -1056,7 +1003,7 @@ input[type="radio"] {
   height: 7px;
   border-radius: 50%;
   background: currentColor;
-  box-shadow: 0 0 10px currentColor;
+
   animation: pulse-dot 2s ease-in-out infinite;
 }
 
@@ -1122,7 +1069,7 @@ input[type="radio"] {
 
 .video-card:hover {
   border-color: var(--line-strong);
-  transform: translateY(-2px);
+  transform: none;
 }
 
 .video-card > div {
@@ -1169,25 +1116,25 @@ input[type="radio"] {
   padding: 15px 17px;
   border: 1px dashed var(--line-strong);
   border-radius: var(--r-md);
-  background: rgba(9, 13, 24, 0.4);
+  background: var(--well);
   color: var(--muted);
   font-size: 0.87rem;
 }
 
 .notice-error {
   border-style: solid;
-  border-color: rgba(251, 113, 133, 0.32);
-  background: rgba(251, 113, 133, 0.07);
-  color: #fecdd3;
+  border-color: rgba(220, 38, 38, 0.32);
+  background: rgba(220, 38, 38, 0.07);
+  color: #991b1b;
 }
 
 .login-error {
   margin-top: 14px;
   padding: 11px 14px;
-  border: 1px solid rgba(251, 113, 133, 0.32);
+  border: 1px solid rgba(220, 38, 38, 0.32);
   border-radius: var(--r-sm);
-  background: rgba(251, 113, 133, 0.09);
-  color: #fecdd3;
+  background: rgba(220, 38, 38, 0.09);
+  color: #991b1b;
   font-size: 0.86rem;
 }
 
@@ -1198,7 +1145,7 @@ input[type="radio"] {
   padding: 11px 18px;
   border: 1px solid var(--line-strong);
   border-radius: var(--r-md);
-  background: rgba(9, 13, 24, 0.6);
+  background: var(--well);
   text-align: center;
 }
 
@@ -1221,8 +1168,8 @@ input[type="radio"] {
 }
 
 .exam-clock-warn {
-  border-color: rgba(251, 191, 36, 0.5);
-  background: rgba(251, 191, 36, 0.07);
+  border-color: rgba(217, 119, 6, 0.5);
+  background: rgba(217, 119, 6, 0.07);
 }
 
 .exam-clock-warn .exam-clock-value {
@@ -1230,8 +1177,8 @@ input[type="radio"] {
 }
 
 .exam-clock-danger {
-  border-color: rgba(251, 113, 133, 0.6);
-  background: rgba(251, 113, 133, 0.1);
+  border-color: rgba(220, 38, 38, 0.6);
+  background: rgba(220, 38, 38, 0.1);
   animation: clock-pulse 1s ease-in-out infinite;
 }
 
@@ -1241,7 +1188,7 @@ input[type="radio"] {
 
 @keyframes clock-pulse {
   50% {
-    background: rgba(127, 29, 29, 0.4);
+    background: rgba(220, 38, 38, 0.12);
   }
 }
 
@@ -1319,7 +1266,7 @@ input[type="radio"] {
 }
 
 .question-card:focus-within {
-  border-color: rgba(94, 234, 212, 0.4);
+  border-color: rgba(29, 78, 216, 0.4);
 }
 
 .question-head {
@@ -1338,7 +1285,7 @@ input[type="radio"] {
   height: 26px;
   padding: 0 8px;
   border-radius: var(--r-xs);
-  background: rgba(94, 234, 212, 0.13);
+  background: rgba(29, 78, 216, 0.13);
   color: var(--brand);
   font-size: 0.76rem;
   font-weight: 680;
@@ -1373,7 +1320,7 @@ input[type="radio"] {
   padding: 11px 14px;
   border: 1px solid var(--line);
   border-radius: var(--r-sm);
-  background: rgba(9, 13, 24, 0.4);
+  background: var(--well);
   cursor: pointer;
   font-size: 0.91rem;
   transition:
@@ -1383,12 +1330,12 @@ input[type="radio"] {
 
 .choice:hover {
   border-color: var(--line-strong);
-  background: rgba(9, 13, 24, 0.7);
+  background: var(--well);
 }
 
 .choice:has(input:checked) {
   border-color: var(--brand);
-  background: rgba(94, 234, 212, 0.09);
+  background: rgba(29, 78, 216, 0.09);
 }
 
 .exam-footer {
@@ -1419,17 +1366,13 @@ input[type="radio"] {
 }
 
 .result-pass {
-  border-color: rgba(52, 211, 153, 0.35);
-  background:
-    radial-gradient(24rem 14rem at 50% 0%, rgba(52, 211, 153, 0.14), transparent 70%),
-    var(--surface-2);
+  border-color: rgba(22, 163, 74, 0.35);
+  background: linear-gradient(rgba(22, 163, 74, 0.05), rgba(22, 163, 74, 0.05)), var(--surface-2);
 }
 
 .result-fail {
-  border-color: rgba(251, 113, 133, 0.32);
-  background:
-    radial-gradient(24rem 14rem at 50% 0%, rgba(251, 113, 133, 0.12), transparent 70%),
-    var(--surface-2);
+  border-color: rgba(220, 38, 38, 0.32);
+  background: linear-gradient(rgba(220, 38, 38, 0.05), rgba(220, 38, 38, 0.05)), var(--surface-2);
 }
 
 .result-eyebrow {
@@ -1510,7 +1453,7 @@ input[type="radio"] {
   padding: 9px 12px;
   border: 1px solid var(--line);
   border-radius: var(--r-sm);
-  background: rgba(9, 13, 24, 0.4);
+  background: var(--well);
 }
 
 .option-row input[type="text"] {
@@ -1549,7 +1492,7 @@ input[type="radio"] {
 .math-error {
   padding: 1px 5px;
   border-radius: var(--r-xs);
-  background: rgba(251, 113, 133, 0.14);
+  background: rgba(220, 38, 38, 0.14);
   color: var(--danger);
   font-family: var(--mono);
   font-size: 0.88em;
@@ -1560,7 +1503,7 @@ input[type="radio"] {
   padding: 11px 14px;
   border: 1px dashed var(--line-strong);
   border-radius: var(--r-sm);
-  background: rgba(9, 13, 24, 0.4);
+  background: var(--well);
 }
 
 .math-preview-label {
@@ -1621,7 +1564,7 @@ input[type="radio"] {
   display: grid;
   place-items: center;
   padding: 22px;
-  background: rgba(3, 6, 13, 0.7);
+  background: rgba(15, 23, 42, 0.5);
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
   animation: fade-in 180ms var(--ease);
@@ -1672,10 +1615,10 @@ input[type="radio"] {
 
 .modal-warning {
   padding: 11px 14px;
-  border: 1px solid rgba(251, 191, 36, 0.3);
+  border: 1px solid rgba(217, 119, 6, 0.3);
   border-radius: var(--r-sm);
-  background: rgba(251, 191, 36, 0.08);
-  color: #fde68a;
+  background: rgba(217, 119, 6, 0.08);
+  color: #92400e;
 }
 
 .modal-rules {
@@ -1707,12 +1650,12 @@ input[type="radio"] {
 
 .modal-primary {
   color: var(--brand-ink);
-  background: linear-gradient(180deg, #7df0dd, var(--brand) 55%, #34d6bd);
+  background: var(--brand);
 }
 
 .modal-primary:hover {
   color: var(--brand-ink);
-  transform: translateY(-1px);
+  transform: none;
 }
 
 .modal-quiet {
@@ -1786,7 +1729,7 @@ input[type="radio"] {
 .spinner-big {
   display: inline-block;
   border-radius: 50%;
-  border: 2px solid rgba(255, 255, 255, 0.22);
+  border: 2px solid rgba(100, 116, 139, 0.3);
   border-top-color: currentColor;
   animation: spin 0.7s linear infinite;
 }
@@ -1820,7 +1763,7 @@ input[type="radio"] {
   align-items: center;
   justify-content: center;
   gap: 16px;
-  background: rgba(6, 9, 16, 0.86);
+  background: rgba(248, 250, 252, 0.92);
   backdrop-filter: blur(6px);
   color: var(--muted);
 }
@@ -2013,22 +1956,22 @@ input[type="radio"] {
 }
 
 .pill-easy {
-  background: rgba(52, 211, 153, 0.15);
+  background: rgba(22, 163, 74, 0.15);
   color: var(--success);
 }
 
 .pill-moderate {
-  background: rgba(56, 189, 248, 0.15);
+  background: rgba(37, 99, 235, 0.15);
   color: var(--brand-2);
 }
 
 .pill-hard {
-  background: rgba(251, 191, 36, 0.16);
+  background: rgba(217, 119, 6, 0.16);
   color: var(--accent);
 }
 
 .pill-critical {
-  background: rgba(251, 113, 133, 0.16);
+  background: rgba(220, 38, 38, 0.16);
   color: var(--danger);
 }
 
@@ -2076,11 +2019,11 @@ input[type="radio"] {
 /* The pass mark is visible in the colour change at the 40% band, so the shape
    of a struggling class reads at a glance. */
 .histogram-fail {
-  background: linear-gradient(180deg, rgba(251, 113, 133, 0.75), rgba(251, 113, 133, 0.3));
+  background: linear-gradient(180deg, rgba(220, 38, 38, 0.75), rgba(220, 38, 38, 0.3));
 }
 
 .histogram-pass {
-  background: linear-gradient(180deg, var(--brand), rgba(94, 234, 212, 0.28));
+  background: linear-gradient(180deg, var(--brand), rgba(29, 78, 216, 0.28));
 }
 
 .histogram-label {
@@ -2132,7 +2075,7 @@ input[type="radio"] {
 .meter {
   height: 7px;
   border-radius: var(--r-pill);
-  background: rgba(9, 13, 24, 0.6);
+  background: var(--well);
   overflow: hidden;
 }
 
@@ -2270,11 +2213,9 @@ input[type="radio"] {
   flex-wrap: wrap;
   padding: 18px 22px;
   margin-bottom: 18px;
-  border: 1px solid rgba(94, 234, 212, 0.24);
+  border: 1px solid rgba(29, 78, 216, 0.24);
   border-radius: var(--r-lg);
-  background:
-    radial-gradient(26rem 10rem at 6% 0%, rgba(94, 234, 212, 0.12), transparent 70%),
-    var(--surface-2);
+  background: linear-gradient(rgba(29, 78, 216, 0.05), rgba(29, 78, 216, 0.05)), var(--surface-2);
 }
 
 .panel-cta h3 {
@@ -2384,7 +2325,7 @@ input[type="radio"] {
   padding: 10px 13px;
   border: 1px solid var(--line);
   border-radius: var(--r-sm);
-  background: rgba(9, 13, 24, 0.4);
+  background: var(--well);
 }
 
 .submission-who {
@@ -2439,47 +2380,16 @@ input[type="radio"] {
   opacity: 0.75;
 }
 
-/* --- reveal on scroll ---------------------------------------------------- */
-
-/*
- * Applied by src/lib/reveal.js, never by the markup — if that module fails to
- * load, nothing is hidden and the page simply renders.
- */
-.reveal {
-  opacity: 0;
-  transform: translateY(14px);
-  transition:
-    opacity 520ms var(--ease) var(--reveal-delay, 0ms),
-    transform 520ms var(--ease) var(--reveal-delay, 0ms);
-  will-change: opacity, transform;
-}
-
-.reveal-in {
-  opacity: 1;
-  transform: none;
-  will-change: auto;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .reveal {
-    opacity: 1;
-    transform: none;
-    transition: none;
-  }
-}
-
 /* --- scheduled (published, not yet open) --------------------------------- */
 
 .pill-scheduled {
-  background: rgba(56, 189, 248, 0.16);
+  background: rgba(37, 99, 235, 0.16);
   color: var(--brand-2);
 }
 
 .exam-alert-upcoming {
-  border-color: rgba(56, 189, 248, 0.32);
-  background:
-    radial-gradient(30rem 12rem at 8% 0%, rgba(56, 189, 248, 0.15), transparent 70%),
-    var(--surface-2);
+  border-color: rgba(37, 99, 235, 0.32);
+  background: linear-gradient(rgba(37, 99, 235, 0.05), rgba(37, 99, 235, 0.05)), var(--surface-2);
 }
 
 .exam-alert-upcoming .exam-alert-eyebrow {
@@ -2516,18 +2426,16 @@ input[type="radio"] {
 }
 
 .row-selected td {
-  background: rgba(94, 234, 212, 0.08) !important;
+  background: rgba(29, 78, 216, 0.08) !important;
   box-shadow: inset 2px 0 0 var(--brand);
 }
 
 .user-detail {
   margin-top: 26px;
   padding: 22px 24px 24px;
-  border: 1px solid rgba(94, 234, 212, 0.22);
+  border: 1px solid rgba(29, 78, 216, 0.22);
   border-radius: var(--r-lg);
-  background:
-    radial-gradient(30rem 12rem at 6% 0%, rgba(94, 234, 212, 0.09), transparent 70%),
-    var(--surface-2);
+  background: linear-gradient(rgba(29, 78, 216, 0.05), rgba(29, 78, 216, 0.05)), var(--surface-2);
 }
 
 .user-detail .section-title:first-child {
@@ -2550,7 +2458,7 @@ input[type="radio"] {
   margin-bottom: 9px;
   border: 1px solid var(--line);
   border-radius: var(--r-md);
-  background: rgba(9, 13, 24, 0.4);
+  background: var(--well);
   transition: border-color var(--fast);
 }
 
@@ -2588,7 +2496,7 @@ input[type="radio"] {
 
 .score-form {
   margin-bottom: 16px;
-  border-color: rgba(94, 234, 212, 0.28);
+  border-color: rgba(29, 78, 216, 0.28);
 }
 
 .score-form .form-stack {
@@ -2635,7 +2543,7 @@ input[type="radio"] {
   margin: 0 auto 18px;
   border-radius: 50%;
   border: 1px solid var(--line-strong);
-  background: rgba(9, 13, 24, 0.5);
+  background: var(--well);
   font-size: 1.6rem;
   line-height: 1;
 }
@@ -2657,7 +2565,7 @@ input[type="radio"] {
   padding: 13px 16px;
   border: 1px dashed var(--line-strong);
   border-radius: var(--r-sm);
-  background: rgba(9, 13, 24, 0.4);
+  background: var(--well);
   color: var(--muted);
   font-size: 0.85rem;
   line-height: 1.6;
@@ -2675,38 +2583,32 @@ input[type="radio"] {
 /* Tones. "done" is a completed test, which is good news and should not be
    dressed in the same red as a missed deadline. */
 .state-panel-error {
-  border-color: rgba(251, 113, 133, 0.3);
-  background:
-    radial-gradient(24rem 13rem at 50% 0%, rgba(251, 113, 133, 0.12), transparent 70%),
-    var(--surface-2);
+  border-color: rgba(220, 38, 38, 0.3);
+  background: linear-gradient(rgba(220, 38, 38, 0.05), rgba(220, 38, 38, 0.05)), var(--surface-2);
 }
 
 .state-panel-error .state-icon {
-  border-color: rgba(251, 113, 133, 0.4);
+  border-color: rgba(220, 38, 38, 0.4);
   color: var(--danger);
 }
 
 .state-panel-done {
-  border-color: rgba(52, 211, 153, 0.32);
-  background:
-    radial-gradient(24rem 13rem at 50% 0%, rgba(52, 211, 153, 0.13), transparent 70%),
-    var(--surface-2);
+  border-color: rgba(22, 163, 74, 0.32);
+  background: linear-gradient(rgba(22, 163, 74, 0.05), rgba(22, 163, 74, 0.05)), var(--surface-2);
 }
 
 .state-panel-done .state-icon {
-  border-color: rgba(52, 211, 153, 0.45);
+  border-color: rgba(22, 163, 74, 0.45);
   color: var(--success);
 }
 
 .state-panel-info {
-  border-color: rgba(56, 189, 248, 0.3);
-  background:
-    radial-gradient(24rem 13rem at 50% 0%, rgba(56, 189, 248, 0.12), transparent 70%),
-    var(--surface-2);
+  border-color: rgba(37, 99, 235, 0.3);
+  background: linear-gradient(rgba(37, 99, 235, 0.05), rgba(37, 99, 235, 0.05)), var(--surface-2);
 }
 
 .state-panel-info .state-icon {
-  border-color: rgba(56, 189, 248, 0.42);
+  border-color: rgba(37, 99, 235, 0.42);
   color: var(--brand-2);
 }
 
@@ -2747,7 +2649,7 @@ input[type="radio"] {
   padding: 8px;
   border: 1px solid var(--line);
   border-radius: var(--r-md);
-  background: rgba(9, 13, 24, 0.4);
+  background: var(--well);
 }
 
 .audience-row {
@@ -2769,8 +2671,8 @@ input[type="radio"] {
 }
 
 .audience-row:has(input:checked) {
-  border-color: rgba(94, 234, 212, 0.35);
-  background: rgba(94, 234, 212, 0.08);
+  border-color: rgba(29, 78, 216, 0.35);
+  background: rgba(29, 78, 216, 0.08);
 }
 
 .audience-email {
@@ -2786,6 +2688,238 @@ input[type="radio"] {
 
   .audience-toolbar input[type="search"] {
     flex: 1 1 100%;
+  }
+}
+
+/* --- app shell: top bar and page ---------------------------------------- */
+
+/*
+ * Every signed-in page shares the exam screen's frame: a dark-blue bar across
+ * the top with the brand, where you are, and the way out; the page itself on
+ * a grey ground underneath, in white panels.
+ */
+.app-bar {
+  position: sticky;
+  top: 0;
+  z-index: 40;
+  background: var(--navy);
+  border-bottom: 3px solid var(--brand);
+  color: #ffffff;
+}
+
+.app-bar-inner {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  max-width: 1220px;
+  min-height: 62px;
+  margin: 0 auto;
+  padding: 10px 24px;
+}
+
+.app-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  color: #ffffff;
+  font-size: 1.02rem;
+  font-weight: 750;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.app-brand:hover {
+  color: #ffffff;
+}
+
+.app-brand-mark {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 6px;
+  background: #ffffff;
+  color: var(--navy);
+  font-size: 0.78rem;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+}
+
+.app-section {
+  padding-left: 16px;
+  border-left: 1px solid rgba(255, 255, 255, 0.25);
+  color: #bfdbfe;
+  font-size: 0.74rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.app-nav {
+  display: flex;
+  gap: 4px;
+  margin-left: 12px;
+}
+
+.app-nav a {
+  padding: 8px 12px;
+  border-radius: 6px;
+  color: #dbeafe;
+  font-size: 0.9rem;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.app-nav a:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: #ffffff;
+}
+
+.app-nav a[aria-current="page"] {
+  background: rgba(255, 255, 255, 0.16);
+  color: #ffffff;
+}
+
+.app-bar-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-left: auto;
+}
+
+.app-bar .app-logout {
+  padding: 8px 14px;
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  background: transparent;
+  color: #ffffff;
+  font-size: 0.86rem;
+}
+
+.app-bar .app-logout:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.app-bar .profile-menu {
+  position: static;
+}
+
+.app-bar .profile-icon {
+  width: 36px;
+  height: 36px;
+  border-color: rgba(255, 255, 255, 0.6);
+  box-shadow: none;
+}
+
+/* The page under the bar: no outer card, just the content column. Panels
+   inside it are what is white. */
+body.app .dashboard-card {
+  width: min(100%, 1220px);
+  margin: 0 auto;
+  padding: 24px 24px 40px;
+  border: none;
+  border-radius: 0;
+  background: none;
+  box-shadow: none;
+}
+
+body.app .page-header {
+  align-items: center;
+  margin-bottom: 20px;
+  padding: 20px 24px;
+  border: 1px solid var(--line);
+  border-left: 4px solid var(--brand);
+  border-radius: var(--r-md);
+  background: var(--surface-1);
+}
+
+body.app .page-header h1 {
+  font-size: 1.5rem;
+}
+
+body.app .page-header .sub {
+  margin-top: 4px;
+}
+
+body.app .eyebrow {
+  color: var(--brand);
+}
+
+body.app .stat-box {
+  border-top: 3px solid var(--brand);
+}
+
+body.app .tabs {
+  margin-bottom: 20px;
+}
+
+body.app .credits-bar {
+  padding: 0 16px 24px;
+}
+
+/* Profile is a form, not a dashboard: keep it narrow. */
+body.app .profile-page {
+  width: min(100%, 680px);
+}
+
+/* One column: name, picture, then the password change as its own block. */
+.profile-panel .form-stack {
+  grid-template-columns: 1fr;
+}
+
+.profile-panel .section {
+  margin-top: 28px;
+  padding-top: 22px;
+  border-top: 1px solid var(--line);
+}
+
+.profile-panel .section-title {
+  margin-bottom: 4px;
+}
+
+.profile-panel .password-panel {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: none;
+}
+
+.profile-panel .password-panel .block {
+  margin-top: 14px;
+}
+
+@media (max-width: 860px) {
+  .app-section {
+    display: none;
+  }
+
+  .app-nav {
+    margin-left: 0;
+  }
+}
+
+@media (max-width: 640px) {
+  .app-bar-inner {
+    flex-wrap: wrap;
+    gap: 8px 12px;
+    padding: 8px 14px;
+  }
+
+  .app-brand span:last-child {
+    display: none;
+  }
+
+  /* The nav drops to its own row, full width, under the brand and logout. */
+  .app-nav {
+    order: 3;
+    width: 100%;
+    overflow-x: auto;
+  }
+
+  body.app .dashboard-card {
+    padding: 16px 12px 32px;
+  }
+
+  body.app .page-header {
+    padding: 16px 16px;
   }
 }
 
@@ -3698,4 +3832,10 @@ body.cbt .cbt-swatch.st-answered-marked::after {
 body.cbt .cbt-legend-item .cbt-swatch.st-answered-marked,
 body.cbt .cbt-summary .cbt-swatch.st-answered-marked {
   margin-right: 6px;
+}
+
+/* Urgent outranks pinned when a notice is both. */
+.notice-urgent.notice-pinned {
+  border-color: rgba(220, 38, 38, 0.24);
+  background: #fef6f6;
 }

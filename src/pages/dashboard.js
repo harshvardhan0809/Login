@@ -1,7 +1,6 @@
 import { supabase, DEFAULT_AVATAR, isMissingTable, setupHint } from "../lib/supabase.js";
 import { requireUser, displayName, wireLogout } from "../lib/session.js";
 import { countLabel, el, renderList, setBusy, setNotice, wireTabs } from "../lib/ui.js";
-import { reveal, revealPage } from "../lib/reveal.js";
 import { describeVideo } from "../lib/video.js";
 import { dueStatus, formatDateTime, scheduleLabel, testWindow } from "../lib/dates.js";
 import { openSebGate } from "../lib/sebGate.js";
@@ -32,7 +31,6 @@ profileIcon.src = user.user_metadata?.photo || DEFAULT_AVATAR;
 profileIcon.alt = `${displayName(user)} profile picture`;
 wireLogout();
 wireTabs(document.querySelector('[role="tablist"]'));
-revealPage();
 
 function videoCard(video) {
   const media = describeVideo(video.video_url);
@@ -338,7 +336,6 @@ function renderStats(pending, results) {
     tile(percentages.length ? `${average}%` : "—", "Average score"),
     tile(percentages.length ? `${Math.max(...percentages)}%` : "—", "Best score")
   );
-  reveal(studentStats.children);
 }
 
 /** Swaps in the banner, disposing of the previous one's countdown interval. */
@@ -357,7 +354,6 @@ function renderExamAlert(openTests) {
   );
 
   examAlertMount.replaceChildren(...(banner ? [banner] : []));
-  if (banner) reveal([banner]);
 }
 
 async function loadDashboard() {
