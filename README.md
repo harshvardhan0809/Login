@@ -404,9 +404,9 @@ Google hosts it needs — are allowed through the URL filter.
 Quitting is password-protected, so a student cannot leave mid-exam. The quit
 password is stored in `test_secrets`, readable only by admins; it is on the
 test's card for an invigilator who needs to release a stuck machine. The one
-exception is the config's `quitURL`: the exam page navigates there five
+exception is the config's `quitURL`: the exam page navigates there ten
 seconds after a submission, which closes Safe Exam Browser without a prompt.
-Those five seconds are shown as a counting-down ring rather than simply waited
+Those ten seconds are shown as a counting-down ring rather than simply waited
 out — a locked-down browser that closes itself with no warning reads as a
 crash, which is the wrong thing to feel just after finishing an exam.
 

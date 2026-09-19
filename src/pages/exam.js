@@ -37,7 +37,7 @@ const prevBtn = document.getElementById("prevBtn");
 const submitBtn = document.getElementById("submitBtn");
 
 /** Seconds SEB stays open after a submission, so the student sees their score. */
-const CLOSE_DELAY_SECONDS = 5;
+const CLOSE_DELAY_SECONDS = 10;
 
 /**
  * How long a student may wait inside SEB for a test to open.
@@ -76,6 +76,18 @@ const STATUSES = [
 ];
 
 backBtn.addEventListener("click", () => location.replace("dashboard.html"));
+
+/**
+ * The Back to Dashboard button, which never appears inside Safe Exam Browser.
+ *
+ * In SEB the dashboard is a trap: the student lands on a page with no exam and
+ * no way to quit, because quitting needs the teacher's password. The only
+ * exit there is the quit URL that closeSeb() navigates to. The button starts
+ * hidden in the HTML so it cannot flash up while the page is loading.
+ */
+function showBack(show) {
+  backBtn.hidden = !show || isRunningInSeb();
+}
 
 const user = await requireUser();
 candidateEl.textContent = displayName(user);
@@ -531,7 +543,7 @@ function showResult({ score, total, percentage }) {
   endPaper();
   resultEl.hidden = false;
   clockEl.hidden = true;
-  backBtn.hidden = false;
+  showBack(true);
 
   const panel = el("div", { className: "result-panel" }, [
     el("p", { className: "result-eyebrow", text: "Test submitted" }),
@@ -558,7 +570,7 @@ function showResult({ score, total, percentage }) {
  */
 function deadEnd({ title, message, tone = "error", icon = "!", note, action }) {
   endPaper();
-  backBtn.hidden = true;
+  showBack(false);
 
   const panel = el("div", { className: `state-panel state-panel-${tone}` }, [
     el("div", { className: "state-icon", text: icon }),
@@ -601,7 +613,7 @@ function deadEnd({ title, message, tone = "error", icon = "!", note, action }) {
 function endWithNotice(message) {
   endPaper();
   resultEl.hidden = false;
-  backBtn.hidden = false;
+  showBack(true);
 
   const panel = el("div", { className: "result-panel" }, [
     el("p", { className: "notice notice-error", text: message }),
@@ -959,6 +971,8 @@ async function loadExam() {
 
     const line = el("p", { className: "notice" });
     stateEl.replaceChildren(line);
+    // Outside SEB a student waiting early may leave; inside, showBack() refuses.
+    showBack(true);
 
     const tick = () => {
       const left = opensAt - skew - Date.now();
@@ -1041,7 +1055,7 @@ async function loadExam() {
   }
 
   // Leaving mid-exam is one click too easy with a Back button on screen.
-  backBtn.hidden = !preview;
+  showBack(preview);
   formEl.hidden = false;
   renderQuestion();
 
