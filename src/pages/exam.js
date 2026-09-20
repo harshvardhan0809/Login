@@ -214,28 +214,55 @@ function renderLegend() {
   );
 }
 
-function renderPalette() {
-  paletteGridEl.replaceChildren(
-    ...questions.map((question, index) => {
-      const status = statusOf(question);
-      const label = STATUSES.find(item => item.key === status).label;
-      const button = el("button", {
-        type: "button",
-        className: `cbt-cell st-${status}${index === current ? " is-current" : ""}`,
-        text: String(index + 1),
-        title: `Question ${index + 1}: ${label}`,
-      });
-      button.setAttribute("role", "listitem");
-      button.setAttribute("aria-label", `Question ${index + 1}, ${label}`);
-      if (index === current) button.setAttribute("aria-current", "true");
+/**
+ * How a question is numbered: 1, 2, 3 on the main paper, B1, B2 in the bonus
+ * section. The server sends bonus questions last, so counting in order works.
+ */
+function numberOf(index) {
+  const question = questions[index];
+  const sameSection = questions
+    .slice(0, index + 1)
+    .filter(other => Boolean(other.bonus) === Boolean(question.bonus)).length;
+  return question.bonus ? `B${sameSection}` : String(sameSection);
+}
 
-      button.addEventListener("click", () => {
-        goTo(index);
-        setPaletteOpen(false);
-      });
-      return button;
-    })
-  );
+function nameOf(index) {
+  return questions[index].bonus
+    ? `Bonus question ${numberOf(index).slice(1)}`
+    : `Question ${numberOf(index)}`;
+}
+
+function paletteCell(question, index) {
+  const status = statusOf(question);
+  const label = STATUSES.find(item => item.key === status).label;
+  const button = el("button", {
+    type: "button",
+    className: `cbt-cell st-${status}${index === current ? " is-current" : ""}`,
+    text: numberOf(index),
+    title: `${nameOf(index)}: ${label}`,
+  });
+  button.setAttribute("role", "listitem");
+  button.setAttribute("aria-label", `${nameOf(index)}, ${label}`);
+  if (index === current) button.setAttribute("aria-current", "true");
+
+  button.addEventListener("click", () => {
+    goTo(index);
+    setPaletteOpen(false);
+  });
+  return button;
+}
+
+function renderPalette() {
+  const cells = questions.map(paletteCell);
+  const firstBonus = questions.findIndex(question => question.bonus);
+
+  // The bonus section gets its own heading across the grid, so it is clear
+  // those questions sit apart from the main paper.
+  if (firstBonus > -1) {
+    cells.splice(firstBonus, 0, el("p", { className: "cbt-grid-heading", text: "Bonus section" }));
+  }
+
+  paletteGridEl.replaceChildren(...cells);
   renderLegend();
 }
 
@@ -393,13 +420,21 @@ function renderQuestion() {
 
   visited.add(question.id);
 
-  const points = Number(question.points) || 1;
-  qNumberEl.textContent = `Question ${current + 1} of ${questions.length}`;
+  const points = Number(question.points) || 0;
+  const inSection = questions.filter(other => Boolean(other.bonus) === Boolean(question.bonus));
+  qNumberEl.textContent = question.bonus
+    ? `Bonus question ${numberOf(current).slice(1)} of ${inSection.length}`
+    : `Question ${numberOf(current)} of ${inSection.length}`;
   qTypeEl.textContent = TYPE_LABELS[question.type] ?? "Question";
-  qMarksEl.textContent = `${points} ${points === 1 ? "mark" : "marks"}`;
+  qMarksEl.textContent = question.bonus
+    ? points
+      ? `Bonus · +${points} ${points === 1 ? "mark" : "marks"}`
+      : "Bonus · no marks"
+    : `${points} ${points === 1 ? "mark" : "marks"}`;
+  qMarksEl.classList.toggle("cbt-chip-bonus", Boolean(question.bonus));
 
   const body = [
-    el("p", { className: "cbt-qlabel", text: `Question ${current + 1}` }),
+    el("p", { className: "cbt-qlabel", text: nameOf(current) }),
     // Stored as LaTeX source; students see it typeset.
     mathText("div", { className: "cbt-prompt" }, question.prompt),
   ];
@@ -856,10 +891,14 @@ function describeTest(test) {
 function describeMeta(test) {
   const parts = [];
 
-  if (questions.length) {
-    const marks = questions.reduce((sum, question) => sum + (Number(question.points) || 1), 0);
-    parts.push(`${questions.length} question${questions.length === 1 ? "" : "s"} · ${marks} marks`);
+  // Bonus questions are counted apart: they add nothing to the total.
+  const main = questions.filter(question => !question.bonus);
+  const bonus = questions.length - main.length;
+  if (main.length) {
+    const marks = main.reduce((sum, question) => sum + (Number(question.points) || 0), 0);
+    parts.push(`${main.length} question${main.length === 1 ? "" : "s"} · ${marks} marks`);
   }
+  if (bonus) parts.push(`${bonus} bonus`);
   if (test.duration_minutes) parts.push(formatDuration(test.duration_minutes));
   if (test.closes_at) parts.push(`Closes ${formatDateTime(test.closes_at)}`);
 
