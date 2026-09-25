@@ -19,6 +19,7 @@ import {
   removeSebConfig,
 } from "../lib/seb.js";
 import { openQuestionEditor } from "../lib/questionEditor.js";
+import { penaltyLabel } from "../lib/marking.js";
 import { isMissingAudience, openAudienceEditor } from "../lib/audienceEditor.js";
 import { changePasswordSection } from "../lib/password.js";
 import { noticeCard, sortNotices } from "../lib/noticeBoard.js";
@@ -43,6 +44,7 @@ const testKind = document.getElementById("testKind");
 const testLink = document.getElementById("testLink");
 const testLinkField = document.getElementById("testLinkField");
 const testShuffleFields = document.getElementById("testShuffleFields");
+const testNegative = document.getElementById("testNegative");
 const testShuffleQuestions = document.getElementById("testShuffleQuestions");
 const testShuffleOptions = document.getElementById("testShuffleOptions");
 const testDuration = document.getElementById("testDuration");
@@ -178,7 +180,9 @@ function readTestForm() {
     kind,
     form_url: kind === "link" ? link : null,
     requires_seb: testRequiresSeb.checked,
-    // Sent only when ticked, so creating tests still works before 0017 is run.
+    // Sent only when set, so creating tests still works before the migration
+    // that adds each column has been run.
+    ...(Number(testNegative.value) > 0 ? { negative_marking: Number(testNegative.value) } : {}),
     ...(kind === "builtin" && testShuffleQuestions.checked ? { shuffle_questions: true } : {}),
     ...(kind === "builtin" && testShuffleOptions.checked ? { shuffle_options: true } : {}),
     // Always a draft. Releasing is a separate, deliberate press, so questions
@@ -200,7 +204,7 @@ addTestBtn.addEventListener("click", async () => {
     console.error("Create test failed:", error.message);
     toast(
       isMissingColumn(error)
-        ? "Run the newest migrations in supabase/migrations/ (0017 adds shuffling)."
+        ? "Run the newest migrations in supabase/migrations/ (0021 adds SEB key checks)."
         : errorMessage(error, "Could not create the test."),
       "error"
     );
@@ -214,6 +218,7 @@ addTestBtn.addEventListener("click", async () => {
   testOpens.value = "";
   testCloses.value = "";
   testRequiresSeb.checked = true;
+  testNegative.value = "0";
   testShuffleQuestions.checked = false;
   testShuffleOptions.checked = false;
   testKind.value = "builtin";
@@ -352,6 +357,76 @@ function editForm(test, onDone) {
     value: toDatetimeLocal(test.closes_at),
   });
   const sebInput = el("input", { type: "checkbox", checked: test.requires_seb !== false });
+  const bekInput = el("input", {
+    type: "text",
+    value: test.seb_browser_exam_key ?? "",
+    placeholder: "64 characters, copied from Safe Exam Browser",
+    spellcheck: false,
+    autocapitalize: "off",
+  });
+  const enforcementSelect = el("select", {}, [
+    el("option", { value: "auto", text: "Automatic — recognise the SEB you open it in" }),
+    el("option", { value: "watch", text: "Off — record only, never refuse anyone" }),
+    el("option", { value: "strict", text: "Strict — require the key pasted below" }),
+  ]);
+  enforcementSelect.value = ["watch", "strict"].includes(test.seb_enforcement)
+    ? test.seb_enforcement
+    : "auto";
+
+  const learnedAt = test.seb_fingerprint_at;
+  const learnedNote = el("p", {
+    className: `hint ${test.seb_fingerprint ? "is-ok" : ""}`,
+    text: test.seb_fingerprint
+      ? `Recognising your Safe Exam Browser since ${formatDateTime(learnedAt)}. Students must match it.`
+      : "Not set up yet — open this test once in Safe Exam Browser and it configures itself.",
+  });
+
+  // The key is the manual fallback, so it is folded away: nothing here needs
+  // filling in for the automatic check to work.
+  const advanced = el("details", { className: "seb-advanced" }, [
+    el("summary", { text: "Pin to one copy of SEB (optional)" }),
+    labelled(
+      "Browser Exam Key",
+      bekInput,
+      "Only needed for Strict. In Safe Exam Browser: Preferences → Exam → Browser Exam Key."
+    ),
+  ]);
+
+  // Hidden unless the test is locked down at all, so a test without SEB does
+  // not show settings that can do nothing.
+  const sebFields = el("div", { className: "form-stack seb-fields" }, [
+    labelled("Verification", enforcementSelect, "Automatic needs nothing typed in."),
+    learnedNote,
+    advanced,
+  ]);
+  const syncSeb = () => {
+    sebFields.hidden = !sebInput.checked;
+  };
+  sebInput.addEventListener("change", syncSeb);
+  syncSeb();
+
+  const negativeSelect = el(
+    "select",
+    {},
+    [
+      ["0", "None — a wrong answer costs nothing"],
+      ["0.25", "¼ of the marks (+4 → −1)"],
+      ["0.3333", "⅓ of the marks (+3 → −1)"],
+      ["0.5", "½ of the marks (+4 → −2)"],
+    ].map(([value, label]) => el("option", { value, text: label }))
+  );
+  negativeSelect.value = String(test.negative_marking ?? 0);
+  // A value set directly in the database stays selectable rather than being
+  // silently reset to None by this form.
+  if (negativeSelect.selectedIndex === -1) {
+    negativeSelect.append(
+      el("option", {
+        value: String(test.negative_marking),
+        text: `${test.negative_marking} of the marks`,
+      })
+    );
+    negativeSelect.value = String(test.negative_marking);
+  }
   const shuffleQInput = el("input", { type: "checkbox", checked: test.shuffle_questions === true });
   const shuffleOptInput = el("input", { type: "checkbox", checked: test.shuffle_options === true });
   const shuffleFields = el("div", {}, [
@@ -400,6 +475,13 @@ function editForm(test, onDone) {
     const schedule = readSchedule(durationInput, opensInput, closesInput, test.closes_at);
     if (!schedule) return;
 
+    // Strict without a key refuses everybody, including the students it is
+    // meant to protect. Caught here rather than on exam morning.
+    if (sebInput.checked && enforcementSelect.value === "strict" && !bekInput.value.trim()) {
+      toast("Strict needs a Browser Exam Key, or nobody will be able to open the test.", "error");
+      return;
+    }
+
     const updated = {
       ...test,
       title,
@@ -422,11 +504,21 @@ function editForm(test, onDone) {
           form_url: updated.form_url,
           requires_seb: updated.requires_seb,
           // Only sent when set, so editing a test still works before 0017 is run.
+          ...(Number(negativeSelect.value) > 0 || test.negative_marking
+            ? { negative_marking: Number(negativeSelect.value) }
+            : {}),
           ...(shuffleQInput.checked || test.shuffle_questions
             ? { shuffle_questions: kind === "builtin" && shuffleQInput.checked }
             : {}),
           ...(shuffleOptInput.checked || test.shuffle_options
             ? { shuffle_options: kind === "builtin" && shuffleOptInput.checked }
+            : {}),
+          // Likewise only sent once used, so editing still works before 0021.
+          ...(bekInput.value.trim() || test.seb_browser_exam_key
+            ? { seb_browser_exam_key: bekInput.value.trim() || null }
+            : {}),
+          ...(enforcementSelect.value === "strict" || test.seb_enforcement
+            ? { seb_enforcement: enforcementSelect.value }
             : {}),
           ...schedule,
         })
@@ -445,7 +537,7 @@ function editForm(test, onDone) {
       console.error("Update test failed:", err);
       toast(
         isMissingColumn(err)
-          ? "Run the newest migrations in supabase/migrations/ first (0017 adds shuffling)."
+          ? "Run the newest migrations in supabase/migrations/ first (0021 adds SEB key checks)."
           : errorMessage(err, "Could not update the test."),
         "error"
       );
@@ -462,6 +554,11 @@ function editForm(test, onDone) {
       labelled("Questions", kindSelect),
       linkField,
       shuffleFields,
+      labelled(
+        "Negative marking",
+        negativeSelect,
+        "Wrong answers on choice and numerical questions."
+      ),
       labelled("Maximum time (minutes)", durationInput, "Blank means no time limit."),
       labelled("Start time", opensInput, "Blank means available as soon as it is published."),
       labelled("Deadline", closesInput, "Blank means no deadline."),
@@ -469,6 +566,7 @@ function editForm(test, onDone) {
         sebInput,
         el("span", { text: "Protect with Safe Exam Browser" }),
       ]),
+      sebFields,
     ]),
     el("div", { className: "admin-actions" }, [saveBtn, cancelBtn]),
   ]);
@@ -500,6 +598,8 @@ function testDetails(test) {
 
   const timing = [];
   if (test.duration_minutes) timing.push(formatDuration(test.duration_minutes));
+  const penalty = penaltyLabel(test.negative_marking);
+  if (penalty) timing.push(`wrong answers lose ${penalty}`);
   if (test.opens_at) timing.push(`opens ${formatDateTime(test.opens_at)}`);
   if (test.closes_at) timing.push(`closes ${formatDateTime(test.closes_at)}`);
   lines.push(timing.length ? timing.join(" · ") : "No time limit or schedule");

@@ -6,6 +6,7 @@ import { isRunningInSeb, sebQuitUrl } from "../lib/seb.js";
 import { openSebGate } from "../lib/sebGate.js";
 import { celebrate } from "../lib/celebrate.js";
 import { mathText, setMathText } from "../lib/math.js";
+import { penaltyFor, penaltyLabel } from "../lib/marking.js";
 
 const subjectEl = document.getElementById("examSubject");
 const titleEl = document.getElementById("examTitle");
@@ -20,6 +21,7 @@ const clockValueEl = document.getElementById("examClockValue");
 const warningEl = document.getElementById("timeWarning");
 
 const qNumberEl = document.getElementById("qNumber");
+const qSectionEl = document.getElementById("qSection");
 const qTypeEl = document.getElementById("qType");
 const qMarksEl = document.getElementById("qMarks");
 const qBodyEl = document.getElementById("qBody");
@@ -115,6 +117,9 @@ let timerId = null;
  * gains nothing. null means the test is untimed.
  */
 let endsAtMs = null;
+
+/** Fraction of a question's marks lost for a wrong answer; 0 for none. */
+let negativeMarking = 0;
 const warned = new Set();
 
 /** Closes the submit confirmation if it is open; set while it is. */
@@ -252,15 +257,26 @@ function paletteCell(question, index) {
   return button;
 }
 
-function renderPalette() {
-  const cells = questions.map(paletteCell);
-  const firstBonus = questions.findIndex(question => question.bonus);
+/** The heading a question sits under in the palette, or "" for none. */
+function sectionOf(question) {
+  if (question.bonus) return "Bonus section";
+  return question.section ?? "";
+}
 
-  // The bonus section gets its own heading across the grid, so it is clear
-  // those questions sit apart from the main paper.
-  if (firstBonus > -1) {
-    cells.splice(firstBonus, 0, el("p", { className: "cbt-grid-heading", text: "Bonus section" }));
-  }
+function renderPalette() {
+  const cells = [];
+  let heading = null;
+
+  questions.forEach((question, index) => {
+    const section = sectionOf(question);
+    // A heading spans the grid wherever the section changes, so each part of
+    // the paper is clearly its own.
+    if (section && section !== heading) {
+      cells.push(el("p", { className: "cbt-grid-heading", text: section }));
+    }
+    heading = section;
+    cells.push(paletteCell(question, index));
+  });
 
   paletteGridEl.replaceChildren(...cells);
   renderLegend();
@@ -426,12 +442,21 @@ function renderQuestion() {
     ? `Bonus question ${numberOf(current).slice(1)} of ${inSection.length}`
     : `Question ${numberOf(current)} of ${inSection.length}`;
   qTypeEl.textContent = TYPE_LABELS[question.type] ?? "Question";
+
+  // "4 marks · −1 if wrong" is how a candidate thinks about a question.
+  const lost =
+    question.bonus || question.type === "text" ? null : penaltyFor(points, negativeMarking);
   qMarksEl.textContent = question.bonus
     ? points
       ? `Bonus · +${points} ${points === 1 ? "mark" : "marks"}`
       : "Bonus · no marks"
-    : `${points} ${points === 1 ? "mark" : "marks"}`;
+    : `${points} ${points === 1 ? "mark" : "marks"}${lost ? ` · ${lost} if wrong` : ""}`;
   qMarksEl.classList.toggle("cbt-chip-bonus", Boolean(question.bonus));
+
+  // The section a student is in, beside the question number.
+  const section = question.bonus ? null : question.section;
+  qSectionEl.textContent = section ?? "";
+  qSectionEl.hidden = !section;
 
   const body = [
     el("p", { className: "cbt-qlabel", text: nameOf(current) }),
@@ -899,6 +924,8 @@ function describeMeta(test) {
     parts.push(`${main.length} question${main.length === 1 ? "" : "s"} · ${marks} marks`);
   }
   if (bonus) parts.push(`${bonus} bonus`);
+  const penalty = penaltyLabel(test.negative_marking);
+  if (penalty) parts.push(`wrong answers lose ${penalty}`);
   if (test.duration_minutes) parts.push(formatDuration(test.duration_minutes));
   if (test.closes_at) parts.push(`Closes ${formatDateTime(test.closes_at)}`);
 
@@ -952,6 +979,60 @@ const BLOCKED = {
   },
 };
 
+/**
+ * The teacher's Safe Exam Browser verification panel.
+ *
+ * Run this before switching a test to strict: it says whether this SEB proved
+ * itself with the key saved on the test. seb_check() is teachers-only, so for
+ * a student the call fails and nothing is shown.
+ *
+ * Rendered as its own panel appended to the page rather than into the exam
+ * body, so it survives whichever state the test ends up in — including the
+ * "could not be verified" dead end, which is exactly when it is needed.
+ */
+async function showSebVerification(id) {
+  const { data, error } = await supabase.rpc("seb_check", { p_test_id: id });
+  if (error || !data) return;
+
+  // Did this SEB send the digests at all? Everything automatic rests on it.
+  const proof = data.proof_headers_arrived === true;
+  const learned = Boolean(data.fingerprint_stored);
+  const ok = proof && (learned || data.key_verified === true);
+
+  // Logged in full when something is off, so it can be diagnosed from the
+  // console rather than guessed at.
+  if (!ok) console.warn("SEB check:", data);
+
+  const panel = el("aside", { className: `seb-verify ${ok ? "is-ok" : "is-bad"}` }, [
+    el("h2", { text: ok ? "SEB verified" : "SEB not verified" }),
+    el("p", {
+      text: !proof
+        ? "This Safe Exam Browser did not send its verification headers, so students " +
+          "cannot be checked automatically. Make sure the test was launched from the " +
+          "portal rather than typed in, and that its config is current."
+        : learned
+          ? "This test now recognises your Safe Exam Browser. Students must match it " +
+            "to open the paper — there is nothing further to set up."
+          : "Verification headers arrived, but no fingerprint has been stored yet. " +
+            "Reload this page inside SEB to record it.",
+    }),
+    el(
+      "ul",
+      {},
+      [
+        `Verification headers: ${proof ? "received" : "missing"}`,
+        `Fingerprint stored: ${learned ? "yes" : "no"}`,
+        `Enforcement: ${data.enforcement ?? "auto"}`,
+      ].map(text => el("li", { text }))
+    ),
+  ]);
+
+  const dismiss = el("button", { type: "button", className: "secondary", text: "Dismiss" });
+  dismiss.addEventListener("click", () => panel.remove());
+  panel.append(dismiss);
+  document.body.append(panel);
+}
+
 async function loadExam() {
   if (!testId) {
     deadEnd({
@@ -985,6 +1066,9 @@ async function loadExam() {
     });
     return;
   }
+
+  // Teachers only, and only inside SEB: the check to run before going strict.
+  if (isRunningInSeb()) showSebVerification(testId);
 
   if (data?.test) describeTest(data.test);
 
@@ -1029,21 +1113,44 @@ async function loadExam() {
     return;
   }
 
-  // A protected test opened in an ordinary browser: send the student to the
-  // Safe Exam Browser launcher they skipped.
+  // A protected test that would not open. Three different reasons, and telling
+  // them apart matters: a student already sitting in a genuine SEB must not be
+  // told to "open it in SEB", or they will simply try again and fail again.
   if (data?.state === "seb_required") {
+    const REASONS = {
+      key_mismatch: {
+        title: "Safe Exam Browser could not be verified",
+        message:
+          "This copy of Safe Exam Browser did not prove it is genuine, so the test cannot " +
+          "start. Quit it, launch the test again from the portal, and if it still fails, " +
+          "tell your teacher — the exam key may need updating.",
+      },
+      key_not_configured: {
+        title: "This test is not ready yet",
+        message:
+          "It is set to verify Safe Exam Browser, but no exam key has been saved for it, " +
+          "so nobody can start it. Please tell your teacher.",
+      },
+    };
+    const reason = REASONS[data.reason];
+
     deadEnd({
       icon: "\u{1F512}",
       tone: "info",
-      title: "Open this test in Safe Exam Browser",
+      title: reason?.title ?? "Open this test in Safe Exam Browser",
       message:
+        reason?.message ??
         "This test is protected, so it can only be taken in Safe Exam Browser. " +
-        "Opening its link in an ordinary browser will not start it.",
+          "Opening its link in an ordinary browser will not start it.",
       note: data.user_agent ? `Browser seen: ${data.user_agent}` : undefined,
-      action: {
-        label: "Open in Safe Exam Browser",
-        onClick: () => openSebGate({ ...data.test, seb_config_url: data.seb_config_url }),
-      },
+      // Relaunching cannot help when the test has no key at all.
+      action:
+        data.reason === "key_not_configured"
+          ? undefined
+          : {
+              label: "Open in Safe Exam Browser",
+              onClick: () => openSebGate({ ...data.test, seb_config_url: data.seb_config_url }),
+            },
     });
     return;
   }
@@ -1078,14 +1185,16 @@ async function loadExam() {
     return;
   }
 
+  negativeMarking = Number(data.test?.negative_marking) || 0;
   describeMeta(data.test);
   stateEl.replaceChildren();
 
-  // An admin opening a draft sees the paper exactly as a student would, but
-  // with no clock and no way to submit — previewing must not create a result.
+  // A teacher sees the paper exactly as a student would, but with no clock and
+  // no way to submit — looking at a test must never leave a mark behind, which
+  // is also what makes it safe to open one just to teach it an SEB fingerprint.
   preview = data.state === "preview";
   if (preview) {
-    setNotice(stateEl, "Preview of a draft. Students cannot open this test yet.", "info");
+    setNotice(stateEl, "Teacher preview. Nothing here is timed or recorded.", "info");
     submitBtn.disabled = true;
     submitBtn.textContent = "Preview only";
   } else {

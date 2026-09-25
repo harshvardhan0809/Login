@@ -33,7 +33,9 @@ const DECIMAL = /^[+-]?(\d+\.?\d*|\.\d+)$/;
 const START =
   /^\s*(?:(bonus)\s*(?:q(?:uestion)?\s*\d*)?\s*[:.)-]?\s*|q(?:uestion)?\s*\d*\s*[:.)-]\s*|\d+\s*[.)]\s+)/i;
 const OPTION = /^\s*\(?([A-J])\s*[).:]\s+(.*)$/i;
-const FIELD_LINE = /^\s*(answer|ans|correct|marks?|points?|type|tolerance|bonus)\s*[:=-]\s*(.*)$/i;
+const FIELD_LINE =
+  /^\s*(answer|ans|correct|marks?|points?|type|tolerance|bonus|section|part)\s*[:=-]\s*(.*)$/i;
+const SECTION_HEADER = /^\s*(?:section|part)\s*[:=-]\s*(.+)$/i;
 const YES_NO = /^(yes|no|y|n|true|false)$/i;
 
 /**
@@ -65,31 +67,49 @@ function optionId() {
   return crypto.randomUUID().slice(0, 8);
 }
 
-/** Splits the paste into one block of lines per question. */
+/**
+ * Splits the paste into one block of lines per question.
+ *
+ * A "Section: Physics" line standing on its own -- before a question rather
+ * than inside one -- opens a section that the questions after it belong to.
+ */
 function blocks(text) {
   const out = [];
   let current = null;
+  let section = null;
 
-  for (const raw of String(text ?? "")
+  const lines = String(text ?? "")
     .replace(/\r\n?/g, "\n")
-    .split("\n")) {
+    .split("\n");
+
+  for (const [index, raw] of lines.entries()) {
     const line = raw.replace(/\s+$/, "");
     const start = line.match(START);
+
+    const header = line.match(SECTION_HEADER);
+    if (header) {
+      const next = lines.slice(index + 1).find(other => other.trim());
+      if (!current || (next && START.test(next) && !fieldOf(next))) {
+        section = header[1].trim();
+        current = null;
+        continue;
+      }
+    }
 
     // A line like "1) 42" inside a question would look like a new question;
     // only treat it as one when it is not a field.
     if (start && !fieldOf(line) && line.slice(start[0].length).trim()) {
-      current = { bonus: Boolean(start[1]), lines: [line.slice(start[0].length)] };
+      current = { bonus: Boolean(start[1]), section, lines: [line.slice(start[0].length)] };
       out.push(current);
     } else if (start && start[1] && !line.slice(start[0].length).trim()) {
       // "Bonus:" on its own line, question text on the next.
-      current = { bonus: true, lines: [] };
+      current = { bonus: true, section, lines: [] };
       out.push(current);
     } else if (current) {
       current.lines.push(line);
     } else if (line.trim()) {
       // Text before the first question: keep it so it is reported, not lost.
-      current = { bonus: false, lines: [line], orphan: true };
+      current = { bonus: false, section, lines: [line], orphan: true };
       out.push(current);
     }
   }
@@ -141,6 +161,7 @@ export function parseQuestions(text) {
     if (block.orphan) errors.push("This text is not part of a question. Start questions with Q1.");
     if (!promptText) errors.push("The question text is missing.");
 
+    const section = (fields.section ?? fields.part ?? block.section ?? "").trim().slice(0, 60);
     const bonusField = (fields.bonus ?? "").toLowerCase();
     const bonus = block.bonus || ["yes", "y", "true", "1"].includes(bonusField);
 
@@ -218,6 +239,7 @@ export function parseQuestions(text) {
       points,
       tolerance,
       bonus,
+      section,
       errors,
     };
   });
@@ -231,6 +253,7 @@ export function parseQuestions(text) {
 /** Rows ready for `questions`, in paste order after the existing ones. */
 export function toRows(questions, testId, firstPosition) {
   const anyBonus = questions.some(question => question.bonus);
+  const anySection = questions.some(question => question.section);
   const anyNumerical = questions.some(question => question.type === "numerical");
 
   return questions.map((question, index) => {
@@ -253,17 +276,22 @@ export function toRows(questions, testId, firstPosition) {
       // paste needs them.
       ...(anyNumerical ? { tolerance: question.tolerance } : {}),
       ...(anyBonus ? { is_bonus: question.bonus } : {}),
+      ...(anySection ? { section: question.section || null } : {}),
     };
   });
 }
 
-export const LAYOUT_EXAMPLE = `Q1. What is the SI unit of force?
+export const LAYOUT_EXAMPLE = `Section: Physics
+
+Q1. What is the SI unit of force?
 A) Joule
 B) Newton
 C) Watt
 D) Pascal
 Answer: B
 Marks: 4
+
+Section: Mathematics
 
 Q2. Which of these are prime numbers?
 A) 2

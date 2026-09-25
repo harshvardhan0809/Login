@@ -4033,3 +4033,129 @@ body.cbt .cbt-chip-bonus {
   letter-spacing: 0.08em;
   text-transform: uppercase;
 }
+
+/* The section a question belongs to, in the exam's question bar. */
+.cbt-qhead {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+body.cbt .cbt-section {
+  padding: 3px 10px;
+  border-radius: var(--r-pill);
+  background: #e0e7ff;
+  color: #3730a3;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+/* The same label on a question in the admin list and the import preview. */
+.pill-section {
+  background: #e0e7ff;
+  color: #3730a3;
+}
+
+/* The section a question belongs to, in the exam's question bar. */
+.cbt-qhead {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+body.cbt .cbt-section {
+  padding: 3px 10px;
+  border-radius: var(--r-pill);
+  background: #e0e7ff;
+  color: #3730a3;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+/* The same label on a question in the admin list and the import preview. */
+.pill-section {
+  background: #e0e7ff;
+  color: #3730a3;
+}
+
+/* --- SEB verification panel (teachers, inside Safe Exam Browser) ---------- */
+
+/* Fixed rather than in the flow: it must stay readable on the exam screen and
+   on the "could not be verified" dead end alike. */
+.seb-verify {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  z-index: 60;
+  max-width: min(360px, calc(100vw - 32px));
+  padding: 16px;
+  border-radius: 12px;
+  border: 1px solid var(--line, #d7dced);
+  background: #fff;
+  box-shadow: 0 12px 32px rgb(15 23 42 / 18%);
+  font-size: 0.9rem;
+}
+
+.seb-verify.is-ok {
+  border-left: 4px solid #16a34a;
+}
+
+.seb-verify.is-bad {
+  border-left: 4px solid #dc2626;
+}
+
+.seb-verify h2 {
+  margin: 0 0 6px;
+  font-size: 1rem;
+}
+
+.seb-verify.is-ok h2 {
+  color: #15803d;
+}
+
+.seb-verify.is-bad h2 {
+  color: #b91c1c;
+}
+
+.seb-verify p {
+  margin: 0 0 10px;
+  color: var(--muted, #55607a);
+}
+
+.seb-verify ul {
+  margin: 0 0 12px;
+  padding-left: 18px;
+  color: var(--muted, #55607a);
+}
+
+.seb-verify button {
+  width: 100%;
+}
+
+/* The two lockdown settings sit under their checkbox, so indent them to show
+   they belong to it. */
+.seb-fields {
+  margin-left: 26px;
+  padding-left: 12px;
+  border-left: 2px solid var(--line, #d7dced);
+}
+
+.seb-advanced {
+  margin-top: 4px;
+}
+
+.seb-advanced summary {
+  cursor: pointer;
+  font-size: 0.85rem;
+  color: var(--muted, #55607a);
+}
+
+.hint.is-ok {
+  color: #15803d;
+}

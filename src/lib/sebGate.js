@@ -11,6 +11,7 @@
 import { el, openModal, toast } from "./ui.js";
 import { examPageUrl, isRunningInSeb, sebLaunchUrl } from "./seb.js";
 import { formatDateTime, formatDuration } from "./dates.js";
+import { penaltySentence } from "./marking.js";
 
 const SEB_DOWNLOAD_PAGE = "https://safeexambrowser.org/download_en.html";
 
@@ -67,6 +68,8 @@ export async function openSebGate(test) {
   if (test.closes_at) {
     rules.push(`This test closes at ${formatDateTime(test.closes_at)}.`);
   }
+  const penalty = penaltySentence(test.negative_marking);
+  if (penalty) rules.push(penalty);
   rules.push(
     "You cannot leave Safe Exam Browser until you submit — it needs a password your " +
       "teacher holds. It closes by itself a few seconds after you submit."

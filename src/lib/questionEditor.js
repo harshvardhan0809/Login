@@ -93,11 +93,18 @@ function optionRow(option, state, onChange) {
 }
 
 /** The "add a question" form. Calls onSave with a row ready for insert. */
-function composer(testId, onSaved, nextPosition) {
+function composer(testId, onSaved, nextPosition, sections = () => []) {
   const state = { type: "single", options: [], answerKey: [] };
 
   const prompt = el("input", { type: "text", placeholder: "What is 7 x 8?" });
   const points = el("input", { type: "number", value: "1", min: "1", step: "any" });
+  const sectionInput = el("input", {
+    type: "text",
+    placeholder: "e.g. Physics — leave blank for one undivided paper",
+  });
+  // Offers the sections this test already uses, while allowing a new one.
+  const sectionList = el("datalist", { id: "sectionOptions" });
+  sectionInput.setAttribute("list", "sectionOptions");
   const bonusInput = el("input", { type: "checkbox" });
   const bonusField = el("label", { className: "checkbox-field" }, [
     bonusInput,
@@ -185,6 +192,11 @@ function composer(testId, onSaved, nextPosition) {
     renderOptions();
   });
 
+  const syncSections = () => {
+    sectionList.replaceChildren(...sections().map(name => el("option", { value: name })));
+  };
+  sectionInput.addEventListener("focus", syncSections);
+
   saveBtn.addEventListener("click", async () => {
     const text = prompt.value.trim();
     if (!text) return toast("Enter the question.", "error");
@@ -241,6 +253,7 @@ function composer(testId, onSaved, nextPosition) {
         ...(state.type === "numerical" ? { tolerance: tol } : {}),
         // Likewise sent only when set, so nothing breaks before 0019 is run.
         ...(isBonus ? { is_bonus: true } : {}),
+        ...(sectionInput.value.trim() ? { section: sectionInput.value.trim().slice(0, 60) } : {}),
       },
     ]);
     reset();
@@ -250,11 +263,13 @@ function composer(testId, onSaved, nextPosition) {
       toast(
         error.code === "PGRST205"
           ? "Run supabase/migrations/0007_builtin_exams.sql to enable built-in tests."
-          : isBonus && /is_bonus|points_check/.test(error.message)
-            ? "Run supabase/migrations/0019_bonus_questions.sql to enable bonus questions."
-            : state.type === "numerical" && /tolerance|questions_type_check/.test(error.message)
-              ? "Run supabase/migrations/0017_cbt_numerical_and_shuffle.sql to enable numerical questions."
-              : errorMessage(error, "Could not add the question."),
+          : sectionInput.value.trim() && /section/.test(error.message)
+            ? "Run supabase/migrations/0020_sections_and_negative_marking.sql to use sections."
+            : isBonus && /is_bonus|points_check/.test(error.message)
+              ? "Run supabase/migrations/0019_bonus_questions.sql to enable bonus questions."
+              : state.type === "numerical" && /tolerance|questions_type_check/.test(error.message)
+                ? "Run supabase/migrations/0017_cbt_numerical_and_shuffle.sql to enable numerical questions."
+                : errorMessage(error, "Could not add the question."),
         "error"
       );
       return;
@@ -281,9 +296,11 @@ function composer(testId, onSaved, nextPosition) {
       promptField,
       field("Type", typeSelect),
       field("Marks", points),
+      field("Section", sectionInput, "Questions sharing a section stay together on the paper."),
       bonusField,
     ]),
     el("div", { className: "answer-area" }, [optionsBox, addOptionBtn, textField, numberField]),
+    sectionList,
     saveBtn,
   ]);
 
@@ -358,6 +375,9 @@ function questionRow(question, reload) {
       el("div", { className: "test-title-row" }, [
         mathText("h4", {}, question.prompt),
         ...(question.is_bonus ? [el("span", { className: "pill pill-bonus", text: "Bonus" })] : []),
+        ...(question.section
+          ? [el("span", { className: "pill pill-section", text: question.section })]
+          : []),
       ]),
       el("p", { text: `${typeLabel} · ${marksText}` }),
       mathText("small", { className: "seb-note" }, `Answer: ${answerText || "not set"}`),
@@ -374,6 +394,8 @@ function questionRow(question, reload) {
  */
 export function openQuestionEditor(container, test, onBack) {
   const listBox = el("div", {});
+  /** Section names already in use, offered by the composer's Section box. */
+  let sectionNames = [];
   const count = el("span", { text: "0 questions" });
   let questionCount = 0;
 
@@ -409,7 +431,30 @@ export function openQuestionEditor(container, test, onBack) {
       `${countLabel(main.length, "question")} · ${marks} marks` +
       (bonus.length ? ` · ${bonus.length} bonus` : "");
 
-    renderList(listBox, main, question => questionRow(question, reload), "No questions yet.");
+    // The sections a teacher has used, in the order the paper shows them.
+    const sections = [...new Set(main.map(question => question.section ?? ""))];
+    sectionNames = sections.filter(Boolean);
+
+    if (sections.length > 1) {
+      listBox.replaceChildren();
+      for (const section of sections) {
+        const inSection = main.filter(question => (question.section ?? "") === section);
+        const sectionMarks = inSection.reduce((sum, q) => sum + (Number(q.points) || 0), 0);
+        const box = el("div", {});
+        renderList(box, inSection, question => questionRow(question, reload), "");
+        listBox.append(
+          el("div", { className: "section-title" }, [
+            el("h3", { text: section || "No section" }),
+            el("span", {
+              text: `${countLabel(inSection.length, "question")} · ${sectionMarks} marks`,
+            }),
+          ]),
+          box
+        );
+      }
+    } else {
+      renderList(listBox, main, question => questionRow(question, reload), "No questions yet.");
+    }
 
     // Bonus questions are their own section, as they are on the paper.
     if (bonus.length) {
@@ -438,7 +483,12 @@ export function openQuestionEditor(container, test, onBack) {
       el("h2", { text: `Questions — ${test.title}` }),
       backBtn,
     ]),
-    composer(test.id, reload, () => questionCount),
+    composer(
+      test.id,
+      reload,
+      () => questionCount,
+      () => sectionNames
+    ),
     bulkImportPanel(test.id, reload, () => questionCount),
     el("div", { className: "section-title" }, [el("h2", { text: "Current Questions" }), count]),
     listBox
