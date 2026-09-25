@@ -4165,3 +4165,8 @@ body.cbt .cbt-section {
 .leave-seb {
   margin-top: 10px;
 }
+
+/* "SEB check active" on an admin test card. */
+.seb-note.is-ok {
+  color: #15803d;
+}

@@ -18,6 +18,7 @@ import {
   publishSebConfig,
   removeSebConfig,
 } from "../lib/seb.js";
+import { openSebGate } from "../lib/sebGate.js";
 import { openQuestionEditor } from "../lib/questionEditor.js";
 import { penaltyLabel } from "../lib/marking.js";
 import { isMissingAudience, openAudienceEditor } from "../lib/audienceEditor.js";
@@ -719,6 +720,30 @@ function testCard(test) {
     actions.push(refreshBtn);
   }
 
+  // Teaching a test what a genuine Safe Exam Browser looks like means opening
+  // it inside one. The student dashboard hides Start until the exam window
+  // opens, so without this there is no way to set up verification in advance —
+  // which is the only time it is any use. get_exam() already lets a teacher
+  // in whatever the clock says, so this button is the missing half.
+  if (published && test.requires_seb !== false) {
+    const verified = Boolean(lockdowns.get(test.id)?.seb_fingerprint);
+    const verifyBtn = el("button", {
+      type: "button",
+      className: "edit-btn",
+      text: verified ? "Re-check SEB" : "Set up SEB check",
+    });
+
+    verifyBtn.addEventListener("click", () => {
+      if (!test.seb_config_url) {
+        toast("Press Refresh lockdown first, so there is a config to launch.", "error");
+        return;
+      }
+      openSebGate(test);
+    });
+
+    actions.push(verifyBtn);
+  }
+
   actions.push(deleteBtn);
 
   const card = el("article", { className: "test-card" }, [
@@ -729,6 +754,16 @@ function testCard(test) {
       ]),
       el("p", { text: test.subject }),
       ...testDetails(test).map(text => el("small", { className: "seb-note", text })),
+      ...(test.requires_seb !== false
+        ? [
+            el("small", {
+              className: `seb-note ${lockdowns.get(test.id)?.seb_fingerprint ? "is-ok" : ""}`,
+              text: lockdowns.get(test.id)?.seb_fingerprint
+                ? "SEB check active — a forged browser cannot open this test."
+                : "SEB check not set up — open this test in SEB once to switch it on.",
+            }),
+          ]
+        : []),
     ]),
     el("div", { className: "admin-actions" }, actions),
   ]);
