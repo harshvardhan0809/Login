@@ -18,6 +18,7 @@ import {
   publishSebConfig,
   removeSebConfig,
 } from "../lib/seb.js";
+import { openSebGate } from "../lib/sebGate.js";
 import { openQuestionEditor } from "../lib/questionEditor.js";
 import { penaltyLabel } from "../lib/marking.js";
 import { isMissingAudience, openAudienceEditor } from "../lib/audienceEditor.js";
@@ -334,6 +335,8 @@ async function setStatus(test, status, button) {
 
 /** Swaps a test card into an inline settings form. */
 function editForm(test, onDone) {
+  // Empty until a teacher has opened the test in SEB, or pasted a key.
+  const lock = lockdowns.get(test.id) ?? {};
   const titleInput = el("input", { value: test.title, placeholder: "Title" });
   const subjectInput = el("input", { value: test.subject, placeholder: "Subject" });
   const linkInput = el("input", {
@@ -359,7 +362,7 @@ function editForm(test, onDone) {
   const sebInput = el("input", { type: "checkbox", checked: test.requires_seb !== false });
   const bekInput = el("input", {
     type: "text",
-    value: test.seb_browser_exam_key ?? "",
+    value: lock.seb_browser_exam_key ?? "",
     placeholder: "64 characters, copied from Safe Exam Browser",
     spellcheck: false,
     autocapitalize: "off",
@@ -373,10 +376,10 @@ function editForm(test, onDone) {
     ? test.seb_enforcement
     : "auto";
 
-  const learnedAt = test.seb_fingerprint_at;
+  const learnedAt = lock.seb_fingerprint_at;
   const learnedNote = el("p", {
-    className: `hint ${test.seb_fingerprint ? "is-ok" : ""}`,
-    text: test.seb_fingerprint
+    className: `hint ${lock.seb_fingerprint ? "is-ok" : ""}`,
+    text: lock.seb_fingerprint
       ? `Recognising your Safe Exam Browser since ${formatDateTime(learnedAt)}. Students must match it.`
       : "Not set up yet — open this test once in Safe Exam Browser and it configures itself.",
   });
@@ -513,10 +516,6 @@ function editForm(test, onDone) {
           ...(shuffleOptInput.checked || test.shuffle_options
             ? { shuffle_options: kind === "builtin" && shuffleOptInput.checked }
             : {}),
-          // Likewise only sent once used, so editing still works before 0021.
-          ...(bekInput.value.trim() || test.seb_browser_exam_key
-            ? { seb_browser_exam_key: bekInput.value.trim() || null }
-            : {}),
           ...(enforcementSelect.value === "strict" || test.seb_enforcement
             ? { seb_enforcement: enforcementSelect.value }
             : {}),
@@ -524,6 +523,17 @@ function editForm(test, onDone) {
         })
         .eq("id", test.id);
       if (error) throw error;
+
+      // The exam key is a secret, so it is written to test_lockdown rather
+      // than to `tests`, which every student on the test can read.
+      if (bekInput.value.trim() || lock.seb_browser_exam_key) {
+        const { error: lockError } = await supabase.from("test_lockdown").upsert({
+          test_id: test.id,
+          seb_browser_exam_key: bekInput.value.trim() || null,
+          updated_at: new Date().toISOString(),
+        });
+        if (lockError) throw lockError;
+      }
 
       // A live test's config now describes the old settings, so rebuild it
       // before a student can download the stale one.
@@ -710,6 +720,30 @@ function testCard(test) {
     actions.push(refreshBtn);
   }
 
+  // Teaching a test what a genuine Safe Exam Browser looks like means opening
+  // it inside one. The student dashboard hides Start until the exam window
+  // opens, so without this there is no way to set up verification in advance —
+  // which is the only time it is any use. get_exam() already lets a teacher
+  // in whatever the clock says, so this button is the missing half.
+  if (published && test.requires_seb !== false) {
+    const verified = Boolean(lockdowns.get(test.id)?.seb_fingerprint);
+    const verifyBtn = el("button", {
+      type: "button",
+      className: "edit-btn",
+      text: verified ? "Re-check SEB" : "Set up SEB check",
+    });
+
+    verifyBtn.addEventListener("click", () => {
+      if (!test.seb_config_url) {
+        toast("Press Refresh lockdown first, so there is a config to launch.", "error");
+        return;
+      }
+      openSebGate(test);
+    });
+
+    actions.push(verifyBtn);
+  }
+
   actions.push(deleteBtn);
 
   const card = el("article", { className: "test-card" }, [
@@ -720,6 +754,16 @@ function testCard(test) {
       ]),
       el("p", { text: test.subject }),
       ...testDetails(test).map(text => el("small", { className: "seb-note", text })),
+      ...(test.requires_seb !== false
+        ? [
+            el("small", {
+              className: `seb-note ${lockdowns.get(test.id)?.seb_fingerprint ? "is-ok" : ""}`,
+              text: lockdowns.get(test.id)?.seb_fingerprint
+                ? "SEB check active — a forged browser cannot open this test."
+                : "SEB check not set up — open this test in SEB once to switch it on.",
+            }),
+          ]
+        : []),
     ]),
     el("div", { className: "admin-actions" }, actions),
   ]);
@@ -783,6 +827,8 @@ const questionCounts = new Map();
 
 /** Quit passwords, admin-only, shown on the card so a teacher can read one out. */
 const quitPasswords = new Map();
+/** test_id -> its SEB verification row, which only teachers may read. */
+const lockdowns = new Map();
 
 /** How many students each limited test is assigned to. */
 const audienceCounts = new Map();
@@ -790,11 +836,16 @@ const audienceCounts = new Map();
 async function loadTests() {
   setNotice(adminTestsList, "Loading tests...");
 
-  const [tests, counts, secrets, audience] = await Promise.all([
+  const [tests, counts, secrets, audience, locks] = await Promise.all([
     supabase.from("tests").select("*").order("created_at", { ascending: false }),
     supabase.from("questions").select("test_id"),
     supabase.from("test_secrets").select("test_id, quit_password"),
     supabase.from("test_audience").select("test_id"),
+    // Verification material lives here rather than on `tests`, which students
+    // are allowed to read. Missing before 0024, hence the tolerated error.
+    supabase
+      .from("test_lockdown")
+      .select("test_id, seb_fingerprint, seb_fingerprint_at, seb_browser_exam_key"),
   ]);
 
   if (tests.error) {
@@ -813,6 +864,9 @@ async function loadTests() {
   // Absent until migration 0008 has run; the cards cope with an empty map.
   quitPasswords.clear();
   for (const row of secrets.data ?? []) quitPasswords.set(row.test_id, row.quit_password);
+
+  lockdowns.clear();
+  for (const row of locks.data ?? []) lockdowns.set(row.test_id, row);
 
   // Absent until 0014; a test with no rows simply reads as "nobody selected".
   audienceCounts.clear();
