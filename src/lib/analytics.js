@@ -75,8 +75,16 @@ export function distribution(results) {
 export function labelQuestions(questions) {
   const main = questions.filter(question => !question.is_bonus);
   const bonus = questions.filter(question => question.is_bonus);
+
+  // Sections keep their order, set by where each one's first question sits,
+  // so this list matches the paper the students saw.
+  const sections = [...new Set(main.map(question => question.section ?? ""))];
+  const ordered = sections.flatMap(section =>
+    main.filter(question => (question.section ?? "") === section)
+  );
+
   return [
-    ...main.map((question, index) => ({ ...question, label: `Q${index + 1}` })),
+    ...ordered.map((question, index) => ({ ...question, label: `Q${index + 1}` })),
     ...bonus.map((question, index) => ({ ...question, label: `B${index + 1}` })),
   ];
 }

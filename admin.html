@@ -290,6 +290,20 @@
               <small class="hint">Nobody can start or submit after this moment.</small>
             </div>
 
+            <div class="field">
+              <label for="testNegative">Negative marking</label>
+              <select id="testNegative">
+                <option value="0">None — a wrong answer costs nothing</option>
+                <option value="0.25">¼ of the marks (+4 → −1)</option>
+                <option value="0.3333">⅓ of the marks (+3 → −1)</option>
+                <option value="0.5">½ of the marks (+4 → −2)</option>
+              </select>
+              <small class="hint">
+                Applies to wrong answers on choice and numerical questions. Blank answers, bonus
+                questions and typed short answers never lose marks, and a paper cannot go below 0.
+              </small>
+            </div>
+
             <div id="testShuffleFields">
               <label class="checkbox-field" for="testShuffleQuestions">
                 <input id="testShuffleQuestions" type="checkbox" />

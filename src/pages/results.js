@@ -112,6 +112,9 @@ function questionRow(item) {
       el("span", { className: "question-number", text: question.label ?? `Q${item.number}` }),
       mathText("p", { className: "question-prompt" }, question.prompt),
       ...(question.is_bonus ? [el("span", { className: "pill pill-bonus", text: "Bonus" })] : []),
+      ...(question.section
+        ? [el("span", { className: "pill pill-section", text: question.section })]
+        : []),
       el("span", { className: `pill pill-${difficulty.tone}`, text: difficulty.label }),
       el("span", { className: "analysis-pct", text: `${item.percentCorrect}%` }),
     ]),
@@ -250,7 +253,8 @@ function exportCurrent() {
     "Student",
     ...questions.map(
       (question, index) =>
-        `${question.label ?? `Q${index + 1}`}${question.is_bonus ? " (bonus)" : ""}: ` +
+        `${question.label ?? `Q${index + 1}`}${question.is_bonus ? " (bonus)" : ""}` +
+        `${question.section ? ` [${question.section}]` : ""}: ` +
         `${question.prompt} [answer: ${correctAnswer(question, { letters: !test.shuffle_options })}]`
     ),
     "Score",

@@ -23,6 +23,9 @@ function previewCard(question) {
     el("span", { className: "question-number", text: `#${question.number}` }),
     el("span", { className: "pill pill-draft", text: TYPE_NAMES[question.type] }),
     ...(question.bonus ? [el("span", { className: "pill pill-bonus", text: "Bonus" })] : []),
+    ...(question.section
+      ? [el("span", { className: "pill pill-section", text: question.section })]
+      : []),
     el("span", { className: "import-marks", text: marks }),
   ]);
 
@@ -173,6 +176,7 @@ export function bulkImportPanel(testId, onSaved, nextPosition) {
       {},
       [
         "Start each question with Q1., Q2. … (or 1., 2. …). Start a bonus question with Bonus:",
+        "A line on its own like Section: Physics puts the questions after it in that section.",
         "The question text can run over several lines. Write maths as LaTeX between $…$.",
         "Put each option on its own line: A) … B) … C) … D) …",
         "Answer: B for one correct option, Answer: A, C for several.",

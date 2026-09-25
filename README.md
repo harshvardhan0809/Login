@@ -163,6 +163,21 @@ on-screen keypad) and it is compared as a number, so `2.5`, `2.50` and `+2.5`
 all match. Set a **tolerance** to accept a range. Numerical questions need
 `0017_cbt_numerical_and_shuffle.sql`.
 
+**Sections:** give a question a _Section_ (e.g. Physics). Questions sharing a
+section stay together on the paper and get their own part of the question
+palette, and a section sits where its first question does. Leave it blank for
+one undivided paper. In a bulk paste, a line of its own like `Section: Physics`
+puts the questions after it in that section.
+
+**Negative marking** is per test: none, ¼, ⅓ or ½ of each question's marks,
+taken off for a wrong answer. It applies only to choice and numerical
+questions; blank answers, bonus questions and typed short answers never lose
+marks, and a paper cannot score below zero. Students see it before they start,
+under the test title, and on every question ("4 marks · −1 if wrong"). Both
+need `0020_sections_and_negative_marking.sql`, which also widens `results.score`
+and `results.total` so half marks and fractional penalties are no longer
+rounded.
+
 **Bonus questions:** tick _Bonus question_ when adding one (or press _Make
 bonus_ on an existing one). Bonus questions sit in their own section after the
 main paper, numbered B1, B2…, and can be worth 0 marks or more. What they earn
@@ -415,15 +430,61 @@ Browser" panel instead of the paper, and — because the check runs before the
 attempt row is created — does not start the student's clock. Teachers are
 exempt, so a published test can still be checked from Chrome.
 
-That check stops copy-and-paste. It does not stop someone who fakes the header.
-Every attempt records the header verdict, whether the exam page found SEB's
-JavaScript API, and the raw user agent. Only the header verdict is shown, as a
-**Not in SEB** flag — students are refused without it, so in practice that is a
-teacher's attempt, or protection toggled around it.
+That check alone stops copy-and-paste, not forgery: a user agent is a line of
+text the browser writes about itself, and setting a custom one containing
+`SEB/3.5` in Chrome's dev tools was enough to open a protected paper in an
+ordinary browser — recorded, wrongly, as `via_seb = true`.
 
-The JavaScript API is recorded but not flagged: genuine SEB attempts arrived
-without it, so its absence proves nothing. Detecting a faked header reliably
-needs SEB's Config Key / Browser Exam Key check.
+Migration 0021 closes that. When `sendBrowserExamKey` is on, SEB hashes the URL
+of every request together with its **Browser Exam Key** and sends the digest as
+`X-SafeExamBrowser-RequestHash`. The key never travels, so a browser that does
+not hold it cannot produce the digest. `seb_key_ok()` recomputes the hash and
+compares.
+
+Migration 0022 then makes that automatic, so no key has to be typed in
+anywhere. Those digests are deterministic: the same configuration produces the
+same `X-SafeExamBrowser-ConfigKeyHash` on any copy of SEB. So a test does not
+need to be told the value — it watches a trustworthy SEB and remembers.
+
+**The first time a teacher opens a protected test from inside SEB**, the digest
+that browser sends is stored as the test's fingerprint, and every student is
+then held to it. Teachers re-teach it on every visit, so upgrading SEB or
+changing the lockdown config heals itself the next time a teacher looks.
+
+That look costs nothing. Since 0023, a teacher opening any test — draft or
+published — gets a preview: the questions, no clock, no attempt row, and no way
+to submit, so setting up verification can never leave a teacher's score in the
+mark list. The deadline, start time and "already submitted" stop applying to a
+teacher too, so a paper can be checked before it opens or after it closes. The
+trade is that a teacher can no longer sit their own test as a dry run; use a
+spare student account, which is the only way to see what a student sees anyway.
+
+Each test chooses how far to take it, in `tests.seb_enforcement`:
+
+| Mode     | Behaviour                                                                                               |
+| -------- | ------------------------------------------------------------------------------------------------------- |
+| `auto`   | The default. Enforces the fingerprint once one has been learned; until then, behaves exactly as before. |
+| `watch`  | Records the verdict, never refuses anyone.                                                              |
+| `strict` | Requires a Browser Exam Key pasted in by hand, pinning the test to one build of SEB.                    |
+
+**This cannot lock a hall out of an exam.** A test no teacher has ever opened in
+SEB has no fingerprint and behaves as it always did; the rule only tightens
+after a genuine SEB has demonstrated what genuine looks like for that test.
+Strict is the one mode that can refuse everybody, so the admin page will not
+save it without a key, and a student who hits it is told the test is not ready
+rather than to open it in SEB — which they already have.
+
+The Config Key digest is preferred over the Browser Exam Key one because it
+depends only on the configuration, not the SEB version, so it survives an
+upgrade. The Browser Exam Key digest is the fallback.
+
+Both the attempt and the result record `seb_key_verified`, so a paper that was
+merely _claimed_ to be under lockdown can be told from one that proved it.
+
+One limit worth knowing: the `.seb` config must be downloadable without signing
+in, so a determined attacker holding it could in principle derive the key
+themselves. This stops forgery by anyone short of that, which is everyone in
+practice — but it is a high bar, not a proof.
 
 Results recorded before this existed carry no flag — not recorded is not the
 same as failed.
