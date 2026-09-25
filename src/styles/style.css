@@ -4159,3 +4159,9 @@ body.cbt .cbt-section {
 .hint.is-ok {
   color: #15803d;
 }
+
+/* The only way out of SEB during a teacher preview, which has nothing to
+   submit and no Back button. */
+.leave-seb {
+  margin-top: 10px;
+}

@@ -1197,6 +1197,22 @@ async function loadExam() {
     setNotice(stateEl, "Teacher preview. Nothing here is timed or recorded.", "info");
     submitBtn.disabled = true;
     submitBtn.textContent = "Preview only";
+
+    // A preview has nothing to submit, and showBack() hides the Back button
+    // inside SEB, so without this a teacher checking a paper — or teaching it
+    // an SEB fingerprint — is trapped until someone types the quit password.
+    // Navigating to the quit URL is what makes SEB close.
+    if (isRunningInSeb()) {
+      const leave = el("button", {
+        type: "button",
+        className: "secondary leave-seb",
+        text: "Close Safe Exam Browser",
+      });
+      leave.addEventListener("click", () => {
+        location.href = sebQuitUrl();
+      });
+      stateEl.append(leave);
+    }
   } else {
     restore();
     window.addEventListener("beforeunload", guardUnload);
