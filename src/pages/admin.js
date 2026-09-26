@@ -21,7 +21,6 @@ import {
 import { openSebGate } from "../lib/sebGate.js";
 import { openQuestionEditor } from "../lib/questionEditor.js";
 import { penaltyLabel } from "../lib/marking.js";
-import { LATEST_SEB } from "../lib/sebVersion.js";
 import { isMissingAudience, openAudienceEditor } from "../lib/audienceEditor.js";
 import { changePasswordSection } from "../lib/password.js";
 import { noticeCard, sortNotices } from "../lib/noticeBoard.js";
@@ -361,24 +360,20 @@ function editForm(test, onDone) {
     value: toDatetimeLocal(test.closes_at),
   });
   const sebInput = el("input", { type: "checkbox", checked: test.requires_seb !== false });
-  const bekInput = el("input", {
-    type: "text",
-    value: lock.seb_browser_exam_key ?? "",
-    placeholder: "64 characters, copied from Safe Exam Browser",
-    spellcheck: false,
-    autocapitalize: "off",
-  });
   const enforcementSelect = el("select", {}, [
     el("option", { value: "auto", text: "Automatic — recognise the SEB you open it in" }),
     el("option", { value: "watch", text: "Off — record only, never refuse anyone" }),
-    el("option", { value: "strict", text: "Strict — require the key pasted below" }),
+    el("option", {
+      value: "strict",
+      text: "Strict — refuse until this test has been shown an SEB",
+    }),
   ]);
   enforcementSelect.value = ["watch", "strict"].includes(test.seb_enforcement)
     ? test.seb_enforcement
     : "auto";
 
-  const learned = Boolean(lock.seb_fingerprint || lock.seb_proof_fingerprint);
-  const learnedAt = lock.seb_proof_at ?? lock.seb_fingerprint_at;
+  const learned = Boolean(lock.seb_proof_fingerprint);
+  const learnedAt = lock.seb_proof_at;
   const learnedNote = el("p", {
     className: `hint ${learned ? "is-ok" : ""}`,
     text: learned
@@ -388,34 +383,11 @@ function editForm(test, onDone) {
 
   // The key is the manual fallback, so it is folded away: nothing here needs
   // filling in for the automatic check to work.
-  const advanced = el("details", { className: "seb-advanced" }, [
-    el("summary", { text: "Pin to one copy of SEB (optional)" }),
-    labelled(
-      "Browser Exam Key",
-      bekInput,
-      "Only needed for Strict. In Safe Exam Browser: Preferences → Exam → Browser Exam Key."
-    ),
-  ]);
-
   // Hidden unless the test is locked down at all, so a test without SEB does
   // not show settings that can do nothing.
-  const minVersionInput = el("input", {
-    type: "text",
-    value: test.seb_min_version ?? "",
-    placeholder: `e.g. ${LATEST_SEB} — leave blank to allow any version`,
-    spellcheck: false,
-  });
-
   const sebFields = el("div", { className: "form-stack seb-fields" }, [
     labelled("Verification", enforcementSelect, "Automatic needs nothing typed in."),
-    labelled(
-      "Minimum SEB version",
-      minVersionInput,
-      `An older Safe Exam Browser is the usual reason verification fails. A machine below ` +
-        `this is told to update, naming the version it has. The current release is ${LATEST_SEB}.`
-    ),
     learnedNote,
-    advanced,
   ]);
   const syncSeb = () => {
     sebFields.hidden = !sebInput.checked;
@@ -493,16 +465,13 @@ function editForm(test, onDone) {
     const schedule = readSchedule(durationInput, opensInput, closesInput, test.closes_at);
     if (!schedule) return;
 
-    const minVersion = minVersionInput.value.trim();
-    if (minVersion && !/^\d+(\.\d+)*$/.test(minVersion)) {
-      toast("Minimum SEB version must be numbers and dots, like 3.9.0.", "error");
-      return;
-    }
-
     // Strict without a key refuses everybody, including the students it is
     // meant to protect. Caught here rather than on exam morning.
-    if (sebInput.checked && enforcementSelect.value === "strict" && !bekInput.value.trim()) {
-      toast("Strict needs a Browser Exam Key, or nobody will be able to open the test.", "error");
+    if (sebInput.checked && enforcementSelect.value === "strict" && !learned) {
+      toast(
+        "Open this test in Safe Exam Browser once before choosing Strict, or nobody will be able to start it.",
+        "error"
+      );
       return;
     }
 
@@ -540,24 +509,10 @@ function editForm(test, onDone) {
           ...(enforcementSelect.value === "strict" || test.seb_enforcement
             ? { seb_enforcement: enforcementSelect.value }
             : {}),
-          ...(minVersionInput.value.trim() || test.seb_min_version
-            ? { seb_min_version: minVersionInput.value.trim() || null }
-            : {}),
           ...schedule,
         })
         .eq("id", test.id);
       if (error) throw error;
-
-      // The exam key is a secret, so it is written to test_lockdown rather
-      // than to `tests`, which every student on the test can read.
-      if (bekInput.value.trim() || lock.seb_browser_exam_key) {
-        const { error: lockError } = await supabase.from("test_lockdown").upsert({
-          test_id: test.id,
-          seb_browser_exam_key: bekInput.value.trim() || null,
-          updated_at: new Date().toISOString(),
-        });
-        if (lockError) throw lockError;
-      }
 
       // A live test's config now describes the old settings, so rebuild it
       // before a student can download the stale one.
@@ -857,15 +812,14 @@ const lockdowns = new Map();
 /**
  * Whether a test can actually hold a browser to account.
  *
- * Either fingerprint will do, and which one a machine can produce depends on
- * its platform: macOS attaches its keys to every request and so teaches the
- * direct one, Windows attaches them only to this site and teaches the proof
- * one. Looking at the direct fingerprint alone reported "not set up" on a test
- * that was verifying Windows machines perfectly well.
+ * A test can hold a browser to account once a teacher's own SEB has shown its
+ * keys to api/seb-verify. That is the only route, on every platform, since
+ * 0034 -- keeping a second one alive caused three separate bugs where an
+ * indicator read the value the machine in front of it could never produce.
  */
 function sebIsSetUp(testId) {
   const lock = lockdowns.get(testId);
-  return Boolean(lock?.seb_fingerprint || lock?.seb_proof_fingerprint);
+  return Boolean(lock?.seb_proof_fingerprint);
 }
 
 /** How many students each limited test is assigned to. */
@@ -883,9 +837,7 @@ async function loadTests() {
     // are allowed to read. Missing before 0024, hence the tolerated error.
     supabase
       .from("test_lockdown")
-      .select(
-        "test_id, seb_fingerprint, seb_fingerprint_at, seb_proof_fingerprint, seb_proof_at, seb_browser_exam_key"
-      ),
+      .select("test_id, seb_proof_fingerprint, seb_proof_at, seb_fingerprint_by"),
   ]);
 
   if (tests.error) {

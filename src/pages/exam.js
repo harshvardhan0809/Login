@@ -3,13 +3,6 @@ import { displayName, requireUser } from "../lib/session.js";
 import { el, errorMessage, setBusy, setNotice, toast } from "../lib/ui.js";
 import { formatClock, formatCountdown, formatDateTime, formatDuration } from "../lib/dates.js";
 import { isRunningInSeb, sebQuitUrl } from "../lib/seb.js";
-import {
-  LATEST_SEB,
-  SEB_DOWNLOAD,
-  isBehindLatest,
-  sebVersion,
-  updateMessage,
-} from "../lib/sebVersion.js";
 import { openSebGate } from "../lib/sebGate.js";
 import { celebrate } from "../lib/celebrate.js";
 import { mathText, setMathText } from "../lib/math.js";
@@ -1004,11 +997,9 @@ async function showSebVerification(id) {
   // Either road proves it: the digests attached to the database request, or
   // the ones this browser showed api/seb-verify. Windows has only the second,
   // so judging on the first alone reported failure on a working machine.
-  const direct = data.direct_headers_arrived === true;
-  const viaProof = data.proof_recorded === true;
-  const proof = direct || viaProof;
-  const learned = Boolean(data.fingerprint_stored || data.proof_fingerprint_stored);
-  const ok = proof && learned;
+  const proof = data.proof_recorded === true;
+  const learned = Boolean(data.proof_fingerprint_stored);
+  const ok = data.verified === true || (proof && learned);
 
   // Logged in full when something is off, so it can be diagnosed from the
   // console rather than guessed at.
@@ -1018,9 +1009,9 @@ async function showSebVerification(id) {
     el("h2", { text: ok ? "SEB verified" : "SEB not verified" }),
     el("p", {
       text: !proof
-        ? "This Safe Exam Browser sent no verification keys by either route, so students " +
-          "cannot be checked automatically. Make sure the test was launched from the " +
-          "portal rather than typed in, and that its config is current."
+        ? "This Safe Exam Browser did not show its verification keys, so students cannot " +
+          "be checked automatically. Make sure the test was launched from the portal " +
+          "rather than typed in, and that its config is current."
         : learned
           ? "This test now recognises your Safe Exam Browser. Students must match it " +
             "to open the paper — there is nothing further to set up."
@@ -1031,26 +1022,8 @@ async function showSebVerification(id) {
       "ul",
       {},
       [
-        // The version is the first thing to check when headers are missing:
-        // an older SEB is much the commonest reason they never arrive.
-        `SEB version: ${sebVersion(navigator.userAgent) ?? "not detected"}${
-          isBehindLatest(navigator.userAgent)
-            ? ` — older than ${LATEST_SEB}, update this machine`
-            : ""
-        }`,
-        // Named separately, because which road carried the keys is the single
-        // most useful fact when a machine misbehaves.
-        `Keys direct to the database: ${direct ? "yes" : "no"}`,
-        `Keys via this site (api/seb-verify): ${viaProof ? "yes" : "no"}`,
-        `Fingerprint stored: ${
-          data.fingerprint_stored && data.proof_fingerprint_stored
-            ? "both routes"
-            : data.proof_fingerprint_stored
-              ? "proof route"
-              : data.fingerprint_stored
-                ? "direct route only"
-                : "no"
-        }`,
+        `Keys shown to this site: ${proof ? "yes" : "no"}`,
+        `Fingerprint stored: ${learned ? "yes" : "no"}`,
         `Enforcement: ${data.enforcement ?? "auto"}`,
       ].map(text => el("li", { text }))
     ),
@@ -1176,23 +1149,6 @@ async function loadExam() {
 
     const timer = setInterval(tick, 1000);
     tick();
-    return;
-  }
-
-  // Out of date rather than untrusted. Handled before the generic SEB screens
-  // so the student is told the one thing that actually fixes it.
-  if (data?.state === "seb_outdated") {
-    deadEnd({
-      icon: "\u2B07",
-      tone: "info",
-      title: "Update Safe Exam Browser",
-      message: updateMessage(data.found_version, data.required_version),
-      note: data.user_agent ? `Browser seen: ${data.user_agent}` : undefined,
-      action: {
-        label: "Open the download page",
-        onClick: () => window.open(SEB_DOWNLOAD, "_blank", "noopener"),
-      },
-    });
     return;
   }
 
