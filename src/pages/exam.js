@@ -1051,6 +1051,40 @@ async function showSebVerification(id) {
   document.body.append(panel);
 }
 
+/**
+ * Lets Safe Exam Browser prove itself where it actually sends its keys.
+ *
+ * SEB attaches its exam keys to requests for the portal's own domain. The
+ * Windows build sends them nowhere else, so the database — on another domain —
+ * never saw them and every student on Windows was refused. This call is
+ * same-origin, so every SEB attaches its keys to it, and the endpoint records
+ * what it saw for get_exam() to check a moment later.
+ *
+ * Deliberately never fatal. If the endpoint is missing or failing, the paper
+ * still loads and get_exam() decides on whatever other evidence there is —
+ * a diagnostic step must not be the reason a student cannot sit an exam.
+ */
+async function proveSeb() {
+  if (!isRunningInSeb() || !testId) return;
+
+  try {
+    const { data } = await supabase.auth.getSession();
+    const token = data?.session?.access_token;
+    if (!token) return;
+
+    const result = await fetch("/api/seb-verify", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ testId }),
+    });
+
+    const report = await result.json();
+    if (!report?.recorded) console.warn("SEB proof not recorded:", report);
+  } catch (error) {
+    console.warn("SEB proof step skipped:", error?.message);
+  }
+}
+
 async function loadExam() {
   if (!testId) {
     deadEnd({
@@ -1062,6 +1096,9 @@ async function loadExam() {
   }
 
   setNotice(stateEl, "Loading test...");
+
+  // Must happen before get_exam, which is what reads the recording.
+  await proveSeb();
 
   const { data, error } = await supabase.rpc("get_exam", {
     p_test_id: testId,

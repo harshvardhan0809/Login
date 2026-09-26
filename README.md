@@ -478,6 +478,47 @@ The Config Key digest is preferred over the Browser Exam Key one because it
 depends only on the configuration, not the SEB version, so it survives an
 upgrade. The Browser Exam Key digest is the fallback.
 
+#### Why the check runs on our own domain
+
+SEB attaches its exam keys to requests for the **exam server's own domain**.
+Reading them at Supabase therefore works on some platforms and silently fails
+on others. Two real machines, logged by 0027:
+
+| Machine             | Config Key digest | Request digest |
+| ------------------- | ----------------- | -------------- |
+| SEB 3.7 on macOS    | sent, and matched | sent           |
+| SEB 3.10 on Windows | **missing**       | **missing**    |
+
+Note which way round that is: the _newer_ build is the one that sends nothing,
+so standardising on "latest" makes it worse, and the SEB version is no guide at
+all. `tests.seb_min_version` exists (0026) and reports an out-of-date copy, but
+it cannot fix this and must not be relied on to.
+
+So `api/seb-verify` — a serverless function on the portal's own domain, where
+every SEB does send its keys — records what it saw, and `get_exam()` reads the
+recording. The exam page calls it just before asking for the paper, and never
+fails on it: if the endpoint is down, the paper still loads and the remaining
+evidence decides.
+
+A recording is trustworthy for two reasons. The student's own token is
+forwarded untouched, so the database reads their email from the JWT and the
+endpoint cannot attribute a proof to anyone else. And `SEB_PROOF_SECRET` lives
+only on the server and in the database, so a student calling
+`record_seb_proof()` from the page has no secret and is refused — which is what
+stops them fabricating the very headers the endpoint exists to observe.
+
+The digest covers the URL requested, so a proof recorded at `api/seb-verify` is
+a different value from a header seen at `supabase.co`. They are learned and
+compared as two separate fingerprints, never against each other, and either one
+matching is enough — which keeps macOS working even if the endpoint is
+unreachable.
+
+**Setup, once.** Generate a secret with `openssl rand -hex 32`, then put the
+same value in both places — `select public.admin_set_seb_secret('…')` in the
+SQL editor, and `SEB_PROOF_SECRET` in the Vercel environment. Until it is set,
+`record_seb_proof()` refuses everything and behaviour is unchanged, so a
+half-finished setup locks nobody out.
+
 Both the attempt and the result record `seb_key_verified`, so a paper that was
 merely _claimed_ to be under lockdown can be told from one that proved it.
 
