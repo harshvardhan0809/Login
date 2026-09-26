@@ -21,6 +21,7 @@ import {
 import { openSebGate } from "../lib/sebGate.js";
 import { openQuestionEditor } from "../lib/questionEditor.js";
 import { penaltyLabel } from "../lib/marking.js";
+import { LATEST_SEB } from "../lib/sebVersion.js";
 import { isMissingAudience, openAudienceEditor } from "../lib/audienceEditor.js";
 import { changePasswordSection } from "../lib/password.js";
 import { noticeCard, sortNotices } from "../lib/noticeBoard.js";
@@ -397,8 +398,21 @@ function editForm(test, onDone) {
 
   // Hidden unless the test is locked down at all, so a test without SEB does
   // not show settings that can do nothing.
+  const minVersionInput = el("input", {
+    type: "text",
+    value: test.seb_min_version ?? "",
+    placeholder: `e.g. ${LATEST_SEB} — leave blank to allow any version`,
+    spellcheck: false,
+  });
+
   const sebFields = el("div", { className: "form-stack seb-fields" }, [
     labelled("Verification", enforcementSelect, "Automatic needs nothing typed in."),
+    labelled(
+      "Minimum SEB version",
+      minVersionInput,
+      `An older Safe Exam Browser is the usual reason verification fails. A machine below ` +
+        `this is told to update, naming the version it has. The current release is ${LATEST_SEB}.`
+    ),
     learnedNote,
     advanced,
   ]);
@@ -478,6 +492,12 @@ function editForm(test, onDone) {
     const schedule = readSchedule(durationInput, opensInput, closesInput, test.closes_at);
     if (!schedule) return;
 
+    const minVersion = minVersionInput.value.trim();
+    if (minVersion && !/^\d+(\.\d+)*$/.test(minVersion)) {
+      toast("Minimum SEB version must be numbers and dots, like 3.9.0.", "error");
+      return;
+    }
+
     // Strict without a key refuses everybody, including the students it is
     // meant to protect. Caught here rather than on exam morning.
     if (sebInput.checked && enforcementSelect.value === "strict" && !bekInput.value.trim()) {
@@ -518,6 +538,9 @@ function editForm(test, onDone) {
             : {}),
           ...(enforcementSelect.value === "strict" || test.seb_enforcement
             ? { seb_enforcement: enforcementSelect.value }
+            : {}),
+          ...(minVersionInput.value.trim() || test.seb_min_version
+            ? { seb_min_version: minVersionInput.value.trim() || null }
             : {}),
           ...schedule,
         })
