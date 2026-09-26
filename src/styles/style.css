@@ -4146,16 +4146,6 @@ body.cbt .cbt-section {
   border-left: 2px solid var(--line, #d7dced);
 }
 
-.seb-advanced {
-  margin-top: 4px;
-}
-
-.seb-advanced summary {
-  cursor: pointer;
-  font-size: 0.85rem;
-  color: var(--muted, #55607a);
-}
-
 .hint.is-ok {
   color: #15803d;
 }
