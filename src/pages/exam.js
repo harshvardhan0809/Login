@@ -1001,10 +1001,14 @@ async function showSebVerification(id) {
   const { data, error } = await supabase.rpc("seb_check", { p_test_id: id });
   if (error || !data) return;
 
-  // Did this SEB send the digests at all? Everything automatic rests on it.
-  const proof = data.proof_headers_arrived === true;
-  const learned = Boolean(data.fingerprint_stored);
-  const ok = proof && (learned || data.key_verified === true);
+  // Either road proves it: the digests attached to the database request, or
+  // the ones this browser showed api/seb-verify. Windows has only the second,
+  // so judging on the first alone reported failure on a working machine.
+  const direct = data.direct_headers_arrived === true;
+  const viaProof = data.proof_recorded === true;
+  const proof = direct || viaProof;
+  const learned = Boolean(data.fingerprint_stored || data.proof_fingerprint_stored);
+  const ok = proof && learned;
 
   // Logged in full when something is off, so it can be diagnosed from the
   // console rather than guessed at.
@@ -1014,18 +1018,14 @@ async function showSebVerification(id) {
     el("h2", { text: ok ? "SEB verified" : "SEB not verified" }),
     el("p", {
       text: !proof
-        ? "This Safe Exam Browser did not send its verification headers, so students " +
-          "cannot be checked automatically. " +
-          (isBehindLatest(navigator.userAgent)
-            ? `This machine runs SEB ${sebVersion(navigator.userAgent)}, older than ${LATEST_SEB} — ` +
-              "updating it is the most likely fix."
-            : "Make sure the test was launched from the portal rather than typed in, " +
-              "and that its config is current.")
+        ? "This Safe Exam Browser sent no verification keys by either route, so students " +
+          "cannot be checked automatically. Make sure the test was launched from the " +
+          "portal rather than typed in, and that its config is current."
         : learned
           ? "This test now recognises your Safe Exam Browser. Students must match it " +
             "to open the paper — there is nothing further to set up."
-          : "Verification headers arrived, but no fingerprint has been stored yet. " +
-            "Reload this page inside SEB to record it.",
+          : "Keys arrived, but no fingerprint has been stored yet. Reload this page " +
+            "inside SEB to record it.",
     }),
     el(
       "ul",
@@ -1038,8 +1038,19 @@ async function showSebVerification(id) {
             ? ` — older than ${LATEST_SEB}, update this machine`
             : ""
         }`,
-        `Verification headers: ${proof ? "received" : "missing"}`,
-        `Fingerprint stored: ${learned ? "yes" : "no"}`,
+        // Named separately, because which road carried the keys is the single
+        // most useful fact when a machine misbehaves.
+        `Keys direct to the database: ${direct ? "yes" : "no"}`,
+        `Keys via this site (api/seb-verify): ${viaProof ? "yes" : "no"}`,
+        `Fingerprint stored: ${
+          data.fingerprint_stored && data.proof_fingerprint_stored
+            ? "both routes"
+            : data.proof_fingerprint_stored
+              ? "proof route"
+              : data.fingerprint_stored
+                ? "direct route only"
+                : "no"
+        }`,
         `Enforcement: ${data.enforcement ?? "auto"}`,
       ].map(text => el("li", { text }))
     ),
