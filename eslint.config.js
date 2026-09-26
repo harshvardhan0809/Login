@@ -20,7 +20,9 @@ export default [
     },
   },
   {
-    files: ["vite.config.js", "eslint.config.js", "scripts/**/*.mjs"],
+    // Server-side: build tooling, maintenance scripts, and the serverless
+    // functions in api/, which run on Vercel rather than in a browser.
+    files: ["vite.config.js", "eslint.config.js", "scripts/**/*.mjs", "api/**/*.js"],
     languageOptions: { globals: { ...globals.node } },
   },
 ];
