@@ -3,6 +3,13 @@ import { displayName, requireUser } from "../lib/session.js";
 import { el, errorMessage, setBusy, setNotice, toast } from "../lib/ui.js";
 import { formatClock, formatCountdown, formatDateTime, formatDuration } from "../lib/dates.js";
 import { isRunningInSeb, sebQuitUrl } from "../lib/seb.js";
+import {
+  LATEST_SEB,
+  SEB_DOWNLOAD,
+  isBehindLatest,
+  sebVersion,
+  updateMessage,
+} from "../lib/sebVersion.js";
 import { openSebGate } from "../lib/sebGate.js";
 import { celebrate } from "../lib/celebrate.js";
 import { mathText, setMathText } from "../lib/math.js";
@@ -1008,8 +1015,12 @@ async function showSebVerification(id) {
     el("p", {
       text: !proof
         ? "This Safe Exam Browser did not send its verification headers, so students " +
-          "cannot be checked automatically. Make sure the test was launched from the " +
-          "portal rather than typed in, and that its config is current."
+          "cannot be checked automatically. " +
+          (isBehindLatest(navigator.userAgent)
+            ? `This machine runs SEB ${sebVersion(navigator.userAgent)}, older than ${LATEST_SEB} — ` +
+              "updating it is the most likely fix."
+            : "Make sure the test was launched from the portal rather than typed in, " +
+              "and that its config is current.")
         : learned
           ? "This test now recognises your Safe Exam Browser. Students must match it " +
             "to open the paper — there is nothing further to set up."
@@ -1020,6 +1031,13 @@ async function showSebVerification(id) {
       "ul",
       {},
       [
+        // The version is the first thing to check when headers are missing:
+        // an older SEB is much the commonest reason they never arrive.
+        `SEB version: ${sebVersion(navigator.userAgent) ?? "not detected"}${
+          isBehindLatest(navigator.userAgent)
+            ? ` — older than ${LATEST_SEB}, update this machine`
+            : ""
+        }`,
         `Verification headers: ${proof ? "received" : "missing"}`,
         `Fingerprint stored: ${learned ? "yes" : "no"}`,
         `Enforcement: ${data.enforcement ?? "auto"}`,
@@ -1110,6 +1128,23 @@ async function loadExam() {
 
     const timer = setInterval(tick, 1000);
     tick();
+    return;
+  }
+
+  // Out of date rather than untrusted. Handled before the generic SEB screens
+  // so the student is told the one thing that actually fixes it.
+  if (data?.state === "seb_outdated") {
+    deadEnd({
+      icon: "\u2B07",
+      tone: "info",
+      title: "Update Safe Exam Browser",
+      message: updateMessage(data.found_version, data.required_version),
+      note: data.user_agent ? `Browser seen: ${data.user_agent}` : undefined,
+      action: {
+        label: "Open the download page",
+        onClick: () => window.open(SEB_DOWNLOAD, "_blank", "noopener"),
+      },
+    });
     return;
   }
 
