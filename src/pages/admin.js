@@ -377,10 +377,11 @@ function editForm(test, onDone) {
     ? test.seb_enforcement
     : "auto";
 
-  const learnedAt = lock.seb_fingerprint_at;
+  const learned = Boolean(lock.seb_fingerprint || lock.seb_proof_fingerprint);
+  const learnedAt = lock.seb_proof_at ?? lock.seb_fingerprint_at;
   const learnedNote = el("p", {
-    className: `hint ${lock.seb_fingerprint ? "is-ok" : ""}`,
-    text: lock.seb_fingerprint
+    className: `hint ${learned ? "is-ok" : ""}`,
+    text: learned
       ? `Recognising your Safe Exam Browser since ${formatDateTime(learnedAt)}. Students must match it.`
       : "Not set up yet — open this test once in Safe Exam Browser and it configures itself.",
   });
@@ -749,7 +750,7 @@ function testCard(test) {
   // which is the only time it is any use. get_exam() already lets a teacher
   // in whatever the clock says, so this button is the missing half.
   if (published && test.requires_seb !== false) {
-    const verified = Boolean(lockdowns.get(test.id)?.seb_fingerprint);
+    const verified = sebIsSetUp(test.id);
     const verifyBtn = el("button", {
       type: "button",
       className: "edit-btn",
@@ -780,8 +781,8 @@ function testCard(test) {
       ...(test.requires_seb !== false
         ? [
             el("small", {
-              className: `seb-note ${lockdowns.get(test.id)?.seb_fingerprint ? "is-ok" : ""}`,
-              text: lockdowns.get(test.id)?.seb_fingerprint
+              className: `seb-note ${sebIsSetUp(test.id) ? "is-ok" : ""}`,
+              text: sebIsSetUp(test.id)
                 ? "SEB check active — a forged browser cannot open this test."
                 : "SEB check not set up — open this test in SEB once to switch it on.",
             }),
@@ -853,6 +854,20 @@ const quitPasswords = new Map();
 /** test_id -> its SEB verification row, which only teachers may read. */
 const lockdowns = new Map();
 
+/**
+ * Whether a test can actually hold a browser to account.
+ *
+ * Either fingerprint will do, and which one a machine can produce depends on
+ * its platform: macOS attaches its keys to every request and so teaches the
+ * direct one, Windows attaches them only to this site and teaches the proof
+ * one. Looking at the direct fingerprint alone reported "not set up" on a test
+ * that was verifying Windows machines perfectly well.
+ */
+function sebIsSetUp(testId) {
+  const lock = lockdowns.get(testId);
+  return Boolean(lock?.seb_fingerprint || lock?.seb_proof_fingerprint);
+}
+
 /** How many students each limited test is assigned to. */
 const audienceCounts = new Map();
 
@@ -868,7 +883,9 @@ async function loadTests() {
     // are allowed to read. Missing before 0024, hence the tolerated error.
     supabase
       .from("test_lockdown")
-      .select("test_id, seb_fingerprint, seb_fingerprint_at, seb_browser_exam_key"),
+      .select(
+        "test_id, seb_fingerprint, seb_fingerprint_at, seb_proof_fingerprint, seb_proof_at, seb_browser_exam_key"
+      ),
   ]);
 
   if (tests.error) {
